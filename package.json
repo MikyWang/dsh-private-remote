@@ -1,0 +1,27 @@
+{
+  "name": "dsh-private-remote-dev",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Private Remote for DeepSeek Harness: connect an official Desktop client to a paired Harness host and continue its workspaces and sessions in the official session UI.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node --test test/unit/*.test.mjs",
+    "build": "node scripts/build.mjs",
+    "verify": "node scripts/verify-bundle.mjs",
+    "test:e2e": "node scripts/e2e-local.mjs",
+    "e2e:local": "node scripts/e2e-local.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MikyWang/dsh-private-remote.git"
+  },
+  "homepage": "https://github.com/MikyWang/dsh-private-remote",
+  "bugs": {
+    "url": "https://github.com/MikyWang/dsh-private-remote/issues"
+  }
+}

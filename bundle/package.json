@@ -1,0 +1,50 @@
+{
+  "name": "dsh-private-remote",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Private Remote for DeepSeek Harness: pair an official Desktop client with a Harness Host and continue its workspaces and sessions in the official session UI.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MikyWang/dsh-private-remote.git"
+  },
+  "homepage": "https://github.com/MikyWang/dsh-private-remote",
+  "bugs": {
+    "url": "https://github.com/MikyWang/dsh-private-remote/issues"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "host/",
+    "shared/",
+    "cordis.patch.yml",
+    "locale/",
+    "icon.svg",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "BUILD-INFO.json"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "engines": {
+    "dsh": "0.2.1-rc.3"
+  }
+}
