@@ -91,7 +91,7 @@ profile 由 Electron 独占启动，不能直接用 `dsh --profile desktop` 启�
 
 ### 4.2 Windows Host
 
-1. 先按 4.3 在 Windows 上安装插件（Release 资产，不需要复制源码目录）。
+1. 先按 4.3 或 4.4 在 Windows 上安装插件（Release 资产或 GitHub 仓库地址，不需要复制源码目录）。
 2. 在 profile 的 `cordis.patch.yml` 增加 Host 配置（`bindHost` 改成该机的 Tailscale IP）：
 
 ```yaml
@@ -239,6 +239,9 @@ Host 面板显示监听地址、设备名、平台、版本、配对令牌和已
   `conversation.session.header.utilities`。
 - GitHub Release `v0.1.0` 资产已发布；在全新的 `DSH_HOME` 中用官方 CLI 从 Release URL
   安装成功，`--dump-config` 出现 `private-remote` 行。
+- 仓库根目录已改成合法 bundle；用官方 CLI 直接安装
+  `https://github.com/MikyWang/dsh-private-remote` 成功，`--dump-config` 同样出现
+  `private-remote`。这对应官方“添加插件”对话框的 GitHub 仓库地址输入。
 
 ### 已实现但待真实双机验证
 

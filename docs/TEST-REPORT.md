@@ -201,6 +201,30 @@ dsh plugin --profile web add \
 克隆仓库或本地构建。`desktop` profile 的安装还需遵守官方限制：先由 Desktop 初始化，
 安装时完全退出 Desktop。
 
+### 4.2 GitHub 仓库地址安装验证（官方“添加插件”对话框）
+
+仓库根目录现在是合法 bundle（`package.json` 含 `dsh.bundle` / `dsh.client`，runtime
+文件在根目录）。在另一个全新的 `DSH_HOME=/tmp/dsh-github-test2` 中执行：
+
+```bash
+dsh plugin --profile web add https://github.com/MikyWang/dsh-private-remote
+```
+
+结果：
+
+```text
+dependencies:
++ dsh-private-remote 0.1.0
+dsh --profile web --dump-config:
+  # == dsh-private-remote
+  - id: private-remote
+```
+
+安装目录包含 `index.js`、`client.js`、`cordis.patch.yml`、`host/`、`shared/`、
+`locale/`；`package.json.dsh.bundle.patch` 指向 `./cordis.patch.yml`。这对应官方
+Desktop“插件 → 添加插件”对话框的 GitHub 仓库地址输入，不需要 npm 发布或 Release
+资产。Windows 上的 `desktop` profile 同样要先由 Desktop 初始化，安装时完全退出。
+
 ## 5. 真实双机
 
 **未执行。** 原因：本机没有第二台 Windows/Tailscale 机器可供测试；不能把本机两个
