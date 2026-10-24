@@ -140,7 +140,29 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 并且安装时 Desktop 要完全退出；这是官方 CLI 的限制。
 
 发布资产就是 `bundle/` 的 `npm pack` 结果；安装时不需要构建，也不需要 npm 账号。
+
 如果要从源码安装：
+
+```bash
+git clone https://github.com/MikyWang/dsh-private-remote.git
+cd dsh-private-remote
+npm run build
+dsh plugin --profile <profile> add "$PWD/bundle"
+```
+
+### 4.4 在官方“添加插件”对话框里直接添加
+
+仓库根目录现在就是合法的 DSH bundle（`package.json` 含 `dsh.bundle` 和 `dsh.client`），
+所以可以直接使用官方 Desktop 的 **插件 → 添加插件** 对话框：
+
+```text
+输入：https://github.com/MikyWang/dsh-private-remote
+安装源：npm 官方源（默认）
+```
+
+点“安装”。插件管理器会把仓库作为 profile 层安装；安装完成后重启/刷新 Desktop，
+侧栏出现“私人远程”。如果对话框更愿意接收本地目录，也可以填本仓库的绝对路径。
+如果 GitHub 地址安装受网络影响失败，回退到 4.3 的 Release 资产 URL。
 
 ## 五、连接
 

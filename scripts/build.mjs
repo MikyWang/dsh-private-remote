@@ -116,4 +116,16 @@ const buildInfo = {
 };
 await fs.writeFile(path.join(bundle, 'BUILD-INFO.json'), `${JSON.stringify(buildInfo, null, 2)}\n`, 'utf8');
 
+// Keep the repository root installable from a GitHub URL (the Add Plugin
+// dialog passes the repo address to pnpm, which reads the root package.json).
+// Root package.json is maintained by hand; only the runtime files are synced.
+for (const directory of ['host', 'shared', 'locale']) {
+  await fs.rm(path.join(root, directory), { recursive: true, force: true });
+  await copyTree(path.join(bundle, directory), path.join(root, directory));
+}
+for (const file of ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg']) {
+  await fs.copyFile(path.join(bundle, file), path.join(root, file));
+}
+
 console.log(`built bundle/ (${files.length} files, ${PLUGIN_VERSION}, protocol ${PROTOCOL_VERSION})`);
+console.log('synced repository-root runtime files for GitHub installation');

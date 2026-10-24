@@ -20,7 +20,7 @@ npm run check
 结果（最终，文档补齐后）：
 
 ```text
-checked syntax: 27 JS files
+checked syntax: 57 JS files
 static checks passed
 ```
 
