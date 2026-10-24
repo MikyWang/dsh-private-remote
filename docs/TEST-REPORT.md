@@ -181,6 +181,26 @@ PASS local two-instance integration (token and cookie redacted)
 这说明“安装到官方 Desktop + 中文 Remote 入口 + 面板/状态/会话标题挂载”已经在真实运行
 实例中生效。**人工视觉验收**（点开面板、连接、看卡片样式）仍建议由用户完成。
 
+### 4.1 GitHub Release 资产安装验证
+
+发布页：<https://github.com/MikyWang/dsh-private-remote/releases/tag/v0.1.0>
+
+资产：`dsh-private-remote-0.1.0.tgz`（49,941 字节，
+SHA256 `847a54974f83239311dc726373af51c0c8af639568f2c705c470eae1d7f63007`）。
+
+在一个全新的 `DSH_HOME=/tmp/dsh-url-test` 中执行：
+
+```bash
+dsh plugin --profile web add \
+  https://github.com/MikyWang/dsh-private-remote/releases/download/v0.1.0/dsh-private-remote-0.1.0.tgz
+```
+
+结果：pnpm 从 GitHub Release 下载并安装 `dsh-private-remote 0.1.0`，
+`dsh --profile web --dump-config` 输出 `# == dsh-private-remote` 和
+`- id: private-remote`。这证明 Windows 可以按 README 4.3 的同一 URL 安装，不需要
+克隆仓库或本地构建。`desktop` profile 的安装还需遵守官方限制：先由 Desktop 初始化，
+安装时完全退出 Desktop。
+
 ## 5. 真实双机
 
 **未执行。** 原因：本机没有第二台 Windows/Tailscale 机器可供测试；不能把本机两个

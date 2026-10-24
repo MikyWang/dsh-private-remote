@@ -215,6 +215,8 @@ Host 面板显示监听地址、设备名、平台、版本、配对令牌和已
 - 官方 Desktop 当前 profile 中 4 个挂载点均为 active：
   `sidebar.panellist`、`main`、`shell.overlay`、
   `conversation.session.header.utilities`。
+- GitHub Release `v0.1.0` 资产已发布；在全新的 `DSH_HOME` 中用官方 CLI 从 Release URL
+  安装成功，`--dump-config` 出现 `private-remote` 行。
 
 ### 已实现但待真实双机验证
 
