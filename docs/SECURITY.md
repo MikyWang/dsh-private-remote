@@ -171,6 +171,7 @@ connection.createPeer({ principal: { kind: 'owner' }, interactions: 'answer' })
 | Host 配对令牌 | Host 官方 credentials 服务，引用 `private_remote_host_token` | 32 字节 base64url 随机值；不写 profile YAML、不写日志。 |
 | 客户端令牌 | 客户端 Harness 进程内存 | 连接/重连使用；断开、切回本机、进程退出后清空。 |
 | 客户端 URL/标签 | `$DSH_HOME/private-remote/client.json`（0600） | 只含 URL 和显示标签，不含令牌。 |
+| Host 设置 | 当前 profile 的 `cordis.patch.yml` | 只含 `role/bindHost/port/label`，不含令牌。 |
 | Host 身份 | `$DSH_HOME/private-remote/host-meta.json`（0600） | `hostId`，不含令牌。 |
 | 浏览器存储 | 不使用 | 客户端 `client.js` 不含 `localStorage`/`sessionStorage` 访问。 |
 
@@ -208,11 +209,15 @@ connection.createPeer({ principal: { kind: 'owner' }, interactions: 'answer' })
 
 - 控制通道是官方 `webServer` 上的 `/private-remote/*` 前缀路由，先调用官方
   `connection.admit(req)`，再要求 Peer 恰好是 `connection.browserPeer`。
+- 设置保存/重置只编辑本插件的 `private-remote` profile 行：控制器自己查找 entry，
+  浏览器不能提交任意 entry id 或任意插件配置；写入走官方 `configEditor.edit()`，远端
+  active 时拒绝。
+- 设置保存先校验 role/port/bindHost，并对监听地址/端口做本机预检；失败不会写 profile。
 - 只接受 POST + `application/json`，body ≤ 1 MiB；动作名在白名单内；方法与路径必须
   一致；响应 `no-store`。
 - 桥服务器拒绝带 `Origin` 的请求（浏览器跨源），并设置 `nosniff`；不启用 CORS。
 - 客户端 UI 不使用 `dangerouslySetInnerHTML`；所有文本由 React 转义。
-- Host 令牌只在 Host 面板显示，复制走剪贴板；面板提示不要截图/发聊天。
+- Host 令牌只在设置页显示，复制走剪贴板；界面提示不要截图/发聊天。
 
 ## 10. 已知残余风险与不在第一版范围
 
@@ -229,7 +234,7 @@ connection.createPeer({ principal: { kind: 'owner' }, interactions: 'answer' })
 ## 11. 验证
 
 - 单元测试覆盖：白名单正/负例、握手证明、HKDF 方向密钥、篡改/重放/乱序、超大帧、
-  配置校验、路径平台差异、Gateway switch 离线拒绝。
+  配置校验、设置合并/地址检测/端口预检、路径平台差异、Gateway switch 离线拒绝。
 - 本机双实例 E2E 覆盖：错误/过期配对不能调用、审批 `allowed-once` 往返、提问答案
   绑定、断开后 `remote/offline`、显式切回本机。
 - 仍待真实双机验证：Windows 防火墙/Tailscale 绑定、真实网络下的证书/隧道、人工

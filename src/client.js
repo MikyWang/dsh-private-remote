@@ -26,7 +26,7 @@ window.__ModuleLoader__.load({
       urlLabel: '远端地址',
       urlPlaceholder: 'http://100.68.241.8:47821',
       tokenLabel: '配对令牌',
-      tokenPlaceholder: '从 Host 的“私人远程”面板复制',
+      tokenPlaceholder: '从 Host 的 设置 → 私人远程 复制',
       labelLabel: '显示标签（可选）',
       labelPlaceholder: '例如：Windows 工作站',
       test: '测试连接',
@@ -44,7 +44,7 @@ window.__ModuleLoader__.load({
       reconnect: '重新连接',
       reconnectHint: '连接断开后，提交会被拒绝，不会回退到本地执行。Host 上的任务可能仍在运行；重新连接后请核对历史。',
       hostTitle: 'Host 模式',
-      hostHint: '绑定私网或 Tailscale IP，在另一台电脑的“私人远程”面板填入这里的地址和令牌。令牌是机密，不要截图或发到聊天里。',
+      hostHint: '绑定私网或 Tailscale IP，然后在另一台电脑的“设置 → 私人远程 → 客户端设置”填入这里的地址和令牌。令牌是机密，不要截图或发到聊天里。',
       listenAddress: '监听地址',
       deviceName: '设备名称',
       version: '版本',
@@ -62,7 +62,7 @@ window.__ModuleLoader__.load({
       forgetConfirm: '删除 Host 令牌并停止桥？客户端将无法再配对，需重启并生成新令牌。',
       clients: '已连接设备',
       noClients: '暂无设备连接',
-      hostNotRunning: 'Host 桥未运行。请把 profile 中的 role 设为 host，并重启 Harness。',
+      hostNotRunning: 'Host 桥未运行。请在 设置 → 私人远程 中启用 Host，或点击“启动 Host 桥”。',
       hostError: 'Host 启动失败',
       configError: '配置错误',
       controlUnavailable: '无法访问本机控制通道。',
@@ -82,12 +82,75 @@ window.__ModuleLoader__.load({
       errorBind: '绑定地址无效',
       errorNotConfigured: '未配置',
       errorProtocol: '协议错误',
-      errorClientDisabled: '此实例是 Host 模式',
+      errorClientDisabled: '当前运行模式不含客户端',
       errorUnsupported: '本机 Harness 不兼容',
       errorStreamOverflow: '流积压超限',
       errorPayload: '负载过大',
       unknownHost: '未知 Host',
       unknown: '未知',
+      settingsHint: 'Host / Client 设置：设置（侧栏底部）→ 私人远程',
+      settingsTitle: '私人远程设置',
+      settingsIntro: '配置这台电脑作为 Host、客户端或两者。保存会写回当前 profile 并立即重载插件，不需要手动改 YAML 或重启 Harness。',
+      settingsLocalOnly: '这些设置只作用于当前这台电脑；远端 Host 的设置要在远端电脑上打开同一页面修改。',
+      settingsWritable: '设置可编辑',
+      settingsReadOnly: '官方配置编辑器不可用；请改用当前 profile 的 cordis.patch.yml 配置。',
+      roleTitle: '运行模式',
+      roleClient: '客户端',
+      roleHost: 'Host',
+      roleBoth: '两者',
+      roleClientHint: '连接另一台电脑上的 Host，使用它的工作区和会话。',
+      roleHostHint: '在本机监听私网地址，供另一台电脑连接。',
+      roleBothHint: '同时提供 Host 并连接远端 Host。',
+      roleWarning: '保存会重载插件；正在连接远端时请先“切换回本机”。有 Host 客户端连接时也会断开。',
+      hostSettingsTitle: 'Host 设置',
+      hostSettingsHint: '监听地址必须是本机回环、RFC1918、Tailscale 100.64/10 或 IPv6 私网地址；不能绑定 0.0.0.0。',
+      bindHostLabel: '监听地址',
+      bindHostPlaceholder: '100.x.y.z 或 127.0.0.1',
+      portLabel: '端口',
+      deviceNameLabel: '本机设备名称（可选）',
+      deviceNamePlaceholder: '留空则使用系统主机名',
+      deviceNameHint: '作为 Host 时显示给客户端，也会作为本机连接远端时的名称。',
+      detectedAddresses: '检测到的地址',
+      noDetectedAddresses: '没有检测到私网地址；请手动输入 Tailscale IP。',
+      addressTailscale: 'Tailscale',
+      addressPrivate: '私有网络',
+      addressLoopback: '仅本机',
+      addressUla: 'IPv6 私网',
+      saveSettings: '保存并应用',
+      savingSettings: '正在保存并重载…',
+      settingsSaved: '设置已保存；Host 桥正在按新设置启动。',
+      settingsUnchanged: '设置没有变化。',
+      settingsMaybeSaved: '连接在重载时中断；正在确认设置是否已保存…',
+      settingsConfirmClients: '当前有 Host 客户端连接；保存会断开它们。继续？',
+      settingsRemoteActive: '正在连接远端；请先“切换回本机”再修改设置。',
+      settingsHostNotRunning: 'Host 桥未运行。',
+      hostStatusTitle: 'Host 状态',
+      startHost: '启动 Host 桥',
+      startingHost: '正在启动…',
+      hostStopped: 'Host 桥已停止',
+      hostStoppedHint: '点击“启动 Host 桥”重新监听；配对令牌仍保留。',
+      hostTokenForgotten: 'Host 令牌已删除；启动 Host 桥会生成新令牌。',
+      hostModeDisabled: '当前运行模式不含 Host；选择“Host”或“两者”后保存。',
+      clientModeDisabled: '当前运行模式不含客户端；选择“客户端”或“两者”后保存。',
+      clientSettingsTitle: '客户端设置',
+      clientSettingsHint: '连接另一台电脑上的 Host。配对令牌只保存在内存中，不写入磁盘或 localStorage。',
+      clientSectionHint: 'Host / Client 设置只作用于当前这台电脑。',
+      remoteUrlHint: '只支持私网 http:// 或公网 https://；不能包含路径、查询参数或凭据。',
+      settingsUndo: '撤销修改',
+      settingsReset: '恢复默认',
+      settingsResetConfirm: '恢复 bundle 默认配置（通常是客户端模式），会删除当前 profile 的覆盖并重载插件。继续？',
+      settingsResetDone: '已恢复默认配置。',
+      settingsSourceNote: '保存会写入当前 profile 的 cordis.patch.yml；首次保存会把当前完整配置固定为 profile 覆盖。',
+      settingsFieldInvalid: '请检查填写内容。',
+      hostClientsConfirm: '当前有 Host 客户端连接；保存会断开它们。继续？',
+      openSettingsPath: '设置 → 私人远程',
+      errorConfigInvalid: '配置无效',
+      errorConfigSaveFailed: '配置保存失败',
+      errorRemoteActive: '请先切换回本机',
+      errorSettingsUnavailable: '配置编辑器不可用',
+      clientDisabledByRole: '当前运行模式不含客户端。',
+      hostDisabledByRole: '当前运行模式不含 Host。',
+      hostBridgeStopped: 'Host 桥已停止。',
     };
 
     const en = {
@@ -106,7 +169,7 @@ window.__ModuleLoader__.load({
       urlLabel: 'Remote URL',
       urlPlaceholder: 'http://100.68.241.8:47821',
       tokenLabel: 'Pairing token',
-      tokenPlaceholder: 'Copy it from the Host’s Private Remote panel',
+      tokenPlaceholder: 'Copy it from the Host’s Settings → Private Remote',
       labelLabel: 'Display label (optional)',
       labelPlaceholder: 'For example: Windows workstation',
       test: 'Test connection',
@@ -124,7 +187,7 @@ window.__ModuleLoader__.load({
       reconnect: 'Reconnect',
       reconnectHint: 'After a disconnect, submissions are refused and never fall back to local execution. Host tasks may still be running; verify the history after reconnecting.',
       hostTitle: 'Host mode',
-      hostHint: 'Bind a private or Tailscale IP, then enter this address and token in the other computer’s Private Remote panel. The token is a secret; do not screenshot or paste it into chat.',
+      hostHint: 'Bind a private or Tailscale IP, then enter this address and token in the other computer’s Settings → Private Remote → Client settings. The token is a secret; do not screenshot or paste it into chat.',
       listenAddress: 'Listen address',
       deviceName: 'Device name',
       version: 'Version',
@@ -142,7 +205,7 @@ window.__ModuleLoader__.load({
       forgetConfirm: 'Remove the Host token and stop the bridge? Clients can no longer pair until a restart creates a new token.',
       clients: 'Connected devices',
       noClients: 'No devices connected',
-      hostNotRunning: 'The Host bridge is not running. Set role: host in the profile and restart Harness.',
+      hostNotRunning: 'The Host bridge is not running. Enable Host in Settings → Private Remote, or select “Start Host bridge”.',
       hostError: 'Host failed to start',
       configError: 'Configuration error',
       controlUnavailable: 'The local control channel is unavailable.',
@@ -162,12 +225,75 @@ window.__ModuleLoader__.load({
       errorBind: 'Invalid bind address',
       errorNotConfigured: 'Not configured',
       errorProtocol: 'Protocol error',
-      errorClientDisabled: 'This instance is host-only',
+      errorClientDisabled: 'The current mode does not include the client',
       errorUnsupported: 'Local Harness unsupported',
       errorStreamOverflow: 'Stream overflow',
       errorPayload: 'Payload too large',
       unknownHost: 'Unknown host',
       unknown: 'Unknown',
+      settingsHint: 'Host / client settings: Settings (sidebar foot) → Private Remote',
+      settingsTitle: 'Private Remote settings',
+      settingsIntro: 'Configure this computer as a Host, a client, or both. Saving writes to the current profile and reloads the plugin immediately; no YAML edit or Harness restart is needed.',
+      settingsLocalOnly: 'These settings apply to this computer only. Configure a remote Host on that remote computer, in the same page.',
+      settingsWritable: 'Settings are editable',
+      settingsReadOnly: 'The official configuration editor is unavailable. Edit this profile’s cordis.patch.yml instead.',
+      roleTitle: 'Mode',
+      roleClient: 'Client',
+      roleHost: 'Host',
+      roleBoth: 'Both',
+      roleClientHint: 'Connect to a Host on another computer and use its workspaces and sessions.',
+      roleHostHint: 'Listen on a private address so another computer can connect.',
+      roleBothHint: 'Serve a Host and connect to a remote Host at the same time.',
+      roleWarning: 'Saving reloads the plugin; switch back to local first if a remote connection is active. Connected Host clients are disconnected too.',
+      hostSettingsTitle: 'Host settings',
+      hostSettingsHint: 'The listen address must be loopback, RFC1918, Tailscale 100.64/10, or a private IPv6 address; 0.0.0.0 is not allowed.',
+      bindHostLabel: 'Listen address',
+      bindHostPlaceholder: '100.x.y.z or 127.0.0.1',
+      portLabel: 'Port',
+      deviceNameLabel: 'Device name (optional)',
+      deviceNamePlaceholder: 'Leave empty to use the system hostname',
+      deviceNameHint: 'Shown to clients while this computer is a Host; also used as this computer’s name when connecting out.',
+      detectedAddresses: 'Detected addresses',
+      noDetectedAddresses: 'No private address detected; enter the Tailscale IP manually.',
+      addressTailscale: 'Tailscale',
+      addressPrivate: 'Private network',
+      addressLoopback: 'Loopback',
+      addressUla: 'IPv6 private',
+      saveSettings: 'Save and apply',
+      savingSettings: 'Saving and reloading…',
+      settingsSaved: 'Settings saved; the Host bridge is starting with the new values.',
+      settingsUnchanged: 'Settings are unchanged.',
+      settingsMaybeSaved: 'The connection was interrupted during reload; confirming whether the settings were saved…',
+      settingsConfirmClients: 'Host clients are connected; saving disconnects them. Continue?',
+      settingsRemoteActive: 'A remote connection is active; switch back to local before changing settings.',
+      settingsHostNotRunning: 'The Host bridge is not running.',
+      hostStatusTitle: 'Host status',
+      startHost: 'Start Host bridge',
+      startingHost: 'Starting…',
+      hostStopped: 'Host bridge stopped',
+      hostStoppedHint: 'Select “Start Host bridge” to listen again; the pairing token is kept.',
+      hostTokenForgotten: 'The Host token was removed; starting the Host bridge creates a new token.',
+      hostModeDisabled: 'The current mode does not include Host; select “Host” or “Both” and save.',
+      clientModeDisabled: 'The current mode does not include the client; select “Client” or “Both” and save.',
+      clientSettingsTitle: 'Client settings',
+      clientSettingsHint: 'Connect to a Host on another computer. The pairing token stays in memory; it is never written to disk or browser storage.',
+      clientSectionHint: 'Host / client settings apply to this computer only.',
+      remoteUrlHint: 'Private http:// or public https:// only; no path, query, or credentials.',
+      settingsUndo: 'Undo changes',
+      settingsReset: 'Restore defaults',
+      settingsResetConfirm: 'Restore the bundle defaults (usually client mode), remove this profile’s override, and reload the plugin. Continue?',
+      settingsResetDone: 'Defaults restored.',
+      settingsSourceNote: 'Saving writes this profile’s cordis.patch.yml; the first save pins the complete current configuration as a profile override.',
+      settingsFieldInvalid: 'Check the fields below.',
+      hostClientsConfirm: 'Host clients are connected; saving disconnects them. Continue?',
+      openSettingsPath: 'Settings → Private Remote',
+      errorConfigInvalid: 'Invalid configuration',
+      errorConfigSaveFailed: 'Configuration save failed',
+      errorRemoteActive: 'Switch to local first',
+      errorSettingsUnavailable: 'Configuration editor unavailable',
+      clientDisabledByRole: 'The current mode does not include the client.',
+      hostDisabledByRole: 'The current mode does not include Host.',
+      hostBridgeStopped: 'The Host bridge is stopped.',
     };
 
     const ERROR_KEYS = {
@@ -181,6 +307,9 @@ window.__ModuleLoader__.load({
       'host/token-missing': 'errorTokenMissing',
       'host/busy': 'errorBusy',
       'host/bind-invalid': 'errorBind',
+      'host/config-invalid': 'errorConfigInvalid',
+      'host/config-save-failed': 'errorConfigSaveFailed',
+      'host/remote-active': 'errorRemoteActive',
       'host/not-configured': 'errorNotConfigured',
       'host/client-disabled': 'errorClientDisabled',
       'remote/protocol': 'errorProtocol',
@@ -248,6 +377,27 @@ window.__ModuleLoader__.load({
         : typeof host.hostname === 'string' && host.hostname !== ''
           ? host.hostname
           : t('unknownHost');
+    }
+
+    function roleIncludesHost(role) {
+      return role === 'host' || role === 'both';
+    }
+
+    function roleIncludesClient(role) {
+      return role === 'client' || role === 'both';
+    }
+
+    function roleLabel(role, t) {
+      if (role === 'host') return t('roleHost');
+      if (role === 'both') return t('roleBoth');
+      return t('roleClient');
+    }
+
+    function addressKindLabel(kind, t) {
+      if (kind === 'tailscale') return t('addressTailscale');
+      if (kind === 'private') return t('addressPrivate');
+      if (kind === 'ula') return t('addressUla');
+      return t('addressLoopback');
     }
 
     function normalizeRemotePath(value, platform) {
@@ -567,27 +717,26 @@ window.__ModuleLoader__.load({
         fontSize: 12,
         wordBreak: 'break-all',
       },
-      statusPill: {
-        position: 'fixed',
-        right: 14,
-        bottom: 14,
-        zIndex: 40,
-        display: 'flex',
+      headerStatus: {
+        display: 'inline-flex',
         alignItems: 'center',
-        gap: 7,
-        maxWidth: 'min(62vw, 380px)',
-        padding: '6px 10px',
+        gap: 6,
+        maxWidth: 260,
+        minWidth: 0,
+        padding: '3px 9px',
         borderRadius: 999,
         border: '1px solid var(--dsw-alias-border-l1)',
-        background: 'var(--dsw-alias-bg-overlay, var(--dsw-alias-bg-layer-2))',
-        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.18)',
-        color: 'var(--dsw-alias-label-primary)',
+        background: 'var(--dsw-alias-bg-layer-2)',
+        color: 'var(--dsw-alias-label-secondary)',
         font: 'inherit',
         fontSize: 12,
-        cursor: 'pointer',
-        pointerEvents: 'auto',
+        lineHeight: '18px',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        flex: '0 1 auto',
       },
       statusText: {
+        minWidth: 0,
         overflow: 'hidden',
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
@@ -607,7 +756,158 @@ window.__ModuleLoader__.load({
         overflow: 'hidden',
         textOverflow: 'ellipsis',
       },
+      settingsSection: {
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        width: '100%',
+        maxWidth: 760,
+        color: 'var(--dsw-alias-label-primary)',
+        fontSize: 13,
+        lineHeight: 1.55,
+      },
+      settingsHeading: {
+        margin: 0,
+        fontSize: 18,
+        fontWeight: 600,
+        letterSpacing: 0.2,
+      },
+      settingsIntro: {
+        margin: 0,
+        color: 'var(--dsw-alias-label-secondary)',
+        fontSize: 13,
+        lineHeight: 1.6,
+      },
+      settingsNote: {
+        margin: 0,
+        color: 'var(--dsw-alias-label-secondary)',
+        fontSize: 12,
+        lineHeight: 1.6,
+      },
+      settingsCard: {
+        boxSizing: 'border-box',
+        border: '1px solid var(--dsw-alias-border-l2)',
+        borderRadius: 12,
+        padding: 16,
+        background: 'var(--dsw-alias-bg-layer-1)',
+      },
+      settingsCardTitle: {
+        margin: '0 0 8px',
+        fontSize: 15,
+        fontWeight: 600,
+      },
+      settingsGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+        gap: 10,
+      },
+      roleGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: 8,
+      },
+      roleOption: {
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 4,
+        textAlign: 'left',
+        cursor: 'pointer',
+        borderRadius: 10,
+        border: '1px solid var(--dsw-alias-border-l2)',
+        background: 'transparent',
+        color: 'var(--dsw-alias-label-primary)',
+        font: 'inherit',
+        padding: '10px 12px',
+      },
+      roleOptionActive: {
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 4,
+        textAlign: 'left',
+        cursor: 'pointer',
+        borderRadius: 10,
+        border: '1px solid var(--dsw-alias-brand-primary)',
+        background: 'color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent)',
+        color: 'var(--dsw-alias-label-primary)',
+        font: 'inherit',
+        padding: '10px 12px',
+      },
+      roleName: {
+        fontWeight: 600,
+        fontSize: 13.5,
+      },
+      roleHint: {
+        color: 'var(--dsw-alias-label-secondary)',
+        fontSize: 11.5,
+        lineHeight: 1.5,
+      },
+      addressChip: {
+        cursor: 'pointer',
+        borderRadius: 999,
+        border: '1px solid var(--dsw-alias-border-l1)',
+        background: 'var(--dsw-alias-bg-layer-2)',
+        color: 'var(--dsw-alias-label-secondary)',
+        font: 'inherit',
+        fontSize: 11.5,
+        padding: '3px 8px',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      },
+      addressChipActive: {
+        cursor: 'pointer',
+        borderRadius: 999,
+        border: '1px solid var(--dsw-alias-brand-primary)',
+        background: 'var(--dsw-alias-bg-layer-2)',
+        color: 'var(--dsw-alias-label-primary)',
+        font: 'inherit',
+        fontSize: 11.5,
+        padding: '3px 8px',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+      },
+      settingsActions: {
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 8,
+        marginTop: 4,
+      },
+      settingsBadgeRow: {
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        gap: 6,
+      },
+      settingsStatusText: {
+        color: 'var(--dsw-alias-label-secondary)',
+        fontSize: 12.5,
+      },
+      settingsDivider: {
+        borderTop: '1px solid var(--dsw-alias-border-l1)',
+        margin: '10px 0',
+      },
     };
+
+    const SETTINGS_CSS = `
+      .dsh-private-remote-settings button:focus-visible,
+      .dsh-private-remote-settings input:focus-visible,
+      .dsh-private-remote-settings select:focus-visible {
+        outline: 2px solid var(--dsw-alias-brand-primary) !important;
+        outline-offset: 2px !important;
+      }
+      .dsh-private-remote-settings button:hover:not(:disabled) {
+        filter: brightness(1.04);
+      }
+    `;
 
     function dotStyle(kind) {
       const background = kind === 'ok'
@@ -639,15 +939,21 @@ window.__ModuleLoader__.load({
       return h('label', { style: styles.field },
         h('span', { style: styles.label }, props.label),
         h('input', {
-          style: styles.input,
+          style: { ...styles.input, opacity: props.disabled === true ? 0.6 : 1 },
           type: props.type ?? 'text',
           value: props.value,
           placeholder: props.placeholder,
           autoComplete: props.autoComplete ?? 'off',
           spellCheck: false,
           readOnly: props.readOnly === true,
+          disabled: props.disabled === true,
+          min: props.min,
+          max: props.max,
+          step: props.step,
+          inputMode: props.inputMode,
           onChange: props.onChange,
         }),
+        props.hint ? h('span', { style: styles.settingsNote }, props.hint) : null,
       );
     }
 
@@ -657,7 +963,7 @@ window.__ModuleLoader__.load({
     }
 
     function ClientForm(props) {
-      const { controller, t, initial } = props;
+      const { controller, t, initial, bare } = props;
       const [url, setUrl] = React.useState(typeof initial.url === 'string' ? initial.url : '');
       const [label, setLabel] = React.useState(typeof initial.label === 'string' ? initial.label : '');
       const [token, setToken] = React.useState('');
@@ -697,52 +1003,63 @@ window.__ModuleLoader__.load({
         void run('connect');
       };
 
+      const content = [
+        h(Field, {
+          key: 'url',
+          label: t('urlLabel'),
+          value: url,
+          placeholder: t('urlPlaceholder'),
+          hint: t('remoteUrlHint'),
+          onChange: (event) => setUrl(event.target.value),
+        }),
+        h(Field, {
+          key: 'token',
+          label: t('tokenLabel'),
+          value: token,
+          placeholder: t('tokenPlaceholder'),
+          type: 'password',
+          onChange: (event) => setToken(event.target.value),
+        }),
+        h(Field, {
+          key: 'label',
+          label: t('labelLabel'),
+          value: label,
+          placeholder: t('labelPlaceholder'),
+          onChange: (event) => setLabel(event.target.value),
+        }),
+        h('div', { key: 'actions', style: styles.row },
+          h(Button, {
+            variant: 'primary',
+            disabled: busy,
+            onClick: () => void run('connect'),
+          }, busy ? t('connecting') : t('connect')),
+          h(Button, {
+            disabled: busy,
+            onClick: () => void run('test'),
+          }, busy ? t('testing') : t('test')),
+        ),
+        h(Notice, { key: 'error', error: true }, error ? describeError(error, t) : ''),
+        h(Notice, { key: 'notice' }, notice),
+        testedHost ? h('div', { key: 'tested', style: { ...styles.badge, marginTop: 10 } },
+          h('span', { style: dotStyle('ok') }),
+          `${hostName(testedHost, t)} · ${testedHost.platform ?? t('unknown')} · ${t('version')} ${testedHost.harnessVersion || testedHost.pluginVersion || t('unknown')}`,
+        ) : null,
+      ];
+
+      if (bare) {
+        return h('form', { onSubmit, style: { margin: 0 } }, content);
+      }
       return h('form', { onSubmit, style: { margin: 0 } },
         h('div', { style: styles.card },
           h('h3', { style: styles.cardTitle }, t('clientTitle')),
           h('p', { style: styles.hint }, t('clientHint')),
-          h(Field, {
-            label: t('urlLabel'),
-            value: url,
-            placeholder: t('urlPlaceholder'),
-            onChange: (event) => setUrl(event.target.value),
-          }),
-          h(Field, {
-            label: t('tokenLabel'),
-            value: token,
-            placeholder: t('tokenPlaceholder'),
-            type: 'password',
-            onChange: (event) => setToken(event.target.value),
-          }),
-          h(Field, {
-            label: t('labelLabel'),
-            value: label,
-            placeholder: t('labelPlaceholder'),
-            onChange: (event) => setLabel(event.target.value),
-          }),
-          h('div', { style: styles.row },
-            h(Button, {
-              variant: 'primary',
-              disabled: busy,
-              onClick: () => void run('connect'),
-            }, busy ? t('connecting') : t('connect')),
-            h(Button, {
-              disabled: busy,
-              onClick: () => void run('test'),
-            }, busy ? t('testing') : t('test')),
-          ),
-          h(Notice, { error: true }, error ? describeError(error, t) : ''),
-          h(Notice, {}, notice),
-          testedHost ? h('div', { style: { ...styles.badge, marginTop: 10 } },
-            h('span', { style: dotStyle('ok') }),
-            `${hostName(testedHost, t)} · ${testedHost.platform ?? t('unknown')} · ${t('version')} ${testedHost.harnessVersion || testedHost.pluginVersion || t('unknown')}`,
-          ) : null,
+          content,
         ),
       );
     }
 
     function RemoteView(props) {
-      const { controller, t, status, useWorkspaces } = props;
+      const { controller, t, status, useWorkspaces, compact, showWorkspaces } = props;
       const [busy, setBusy] = React.useState(false);
       const [error, setError] = React.useState(null);
       const [workspaceError, setWorkspaceError] = React.useState(null);
@@ -791,14 +1108,14 @@ window.__ModuleLoader__.load({
       };
 
       return h('div', null,
-        h('div', { style: styles.header },
+        compact ? null : h('div', { style: styles.header },
           h('h2', { style: styles.title }, t('panel')),
           h('span', { style: styles.badge },
             h('span', { style: dotStyle(online ? 'ok' : 'error') }),
             online ? t('connected') : t('disconnected'),
           ),
         ),
-        h('p', { style: styles.subtitle }, `${t('remote')} · ${remoteName}`),
+        compact ? null : h('p', { style: styles.subtitle }, `${t('remote')} · ${remoteName}`),
         h('div', { style: styles.card },
           h('h3', { style: styles.cardTitle }, remoteName),
           h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '6px 16px', marginBottom: 10 } },
@@ -825,8 +1142,9 @@ window.__ModuleLoader__.load({
             }, t('useLocal')),
           ),
           h(Notice, { error: true }, error ? describeError(error, t) : ''),
+          compact ? null : h('p', { style: styles.settingsNote }, t('settingsHint')),
         ),
-        h('div', { style: styles.card },
+        showWorkspaces === false ? null : h('div', { style: styles.card },
           h('h3', { style: styles.cardTitle }, t('workspaces')),
           items.length === 0
             ? h('p', { style: styles.hint }, t('noWorkspaces'))
@@ -846,7 +1164,7 @@ window.__ModuleLoader__.load({
     }
 
     function HostView(props) {
-      const { controller, t, status } = props;
+      const { controller, t, status, compact } = props;
       const [token, setToken] = React.useState('');
       const [show, setShow] = React.useState(false);
       const [busy, setBusy] = React.useState(false);
@@ -870,6 +1188,26 @@ window.__ModuleLoader__.load({
         } catch (cause) {
           setError(toErrorPayload(cause));
           return undefined;
+        } finally {
+          setBusy(false);
+        }
+      };
+
+      const startHost = async () => {
+        if (busy) return;
+        setBusy(true);
+        setError(null);
+        setNotice('');
+        try {
+          const result = await controller.act('startHost', {});
+          if (!result.ok) {
+            setError(result.error);
+            return;
+          }
+          setNotice(t('listening'));
+          await controller.refresh();
+        } catch (cause) {
+          setError(toErrorPayload(cause));
         } finally {
           setBusy(false);
         }
@@ -916,17 +1254,27 @@ window.__ModuleLoader__.load({
         setShow(false);
       };
 
+      const statusLine = host.listening
+        ? host.url
+        : host.starting
+          ? t('startingHost')
+          : host.stopped
+            ? t('hostStopped')
+            : host.enabled
+              ? t('hostNotRunning')
+              : t('hostDisabledByRole');
+
       return h('div', null,
-        h('div', { style: styles.header },
+        compact ? null : h('div', { style: styles.header },
           h('h2', { style: styles.title }, t('panel')),
           h('span', { style: styles.badge },
             h('span', { style: dotStyle(host.listening ? 'busy' : 'error') }),
             host.listening ? t('listening') : t('host'),
           ),
         ),
-        h('p', { style: styles.subtitle }, `${t('hostTitle')} · ${host.listening ? host.url : t('hostNotRunning')}`),
+        compact ? null : h('p', { style: styles.subtitle }, `${t('hostTitle')} · ${statusLine}`),
         h('div', { style: styles.card },
-          h('h3', { style: styles.cardTitle }, t('hostTitle')),
+          h('h3', { style: styles.cardTitle }, compact ? t('hostStatusTitle') : t('hostTitle')),
           h('p', { style: styles.hint }, t('hostHint')),
           host.listening
             ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '6px 16px', marginBottom: 8 } },
@@ -935,8 +1283,20 @@ window.__ModuleLoader__.load({
                 h('div', null, h('span', { style: styles.label }, `${t('platform')}：`), info?.platform ?? t('unknown')),
                 h('div', null, h('span', { style: styles.label }, `${t('version')}：`), info?.harnessVersion || t('unknown')),
               )
-            : h('p', { style: styles.hint }, host.starting ? t('loading') : t('hostNotRunning')),
-          host.error ? h(Notice, { error: true }, `${t('hostError')}：${host.error.code} ${host.error.message}`) : null,
+            : h('div', null,
+                h('p', { style: styles.hint }, host.starting ? t('loading') : statusLine),
+                host.stopped && host.error?.code === 'host/token-missing'
+                  ? h('p', { style: styles.settingsNote }, t('hostTokenForgotten'))
+                  : null,
+                host.enabled && !host.starting
+                  ? h('div', { style: styles.settingsActions },
+                      h(Button, { variant: 'primary', disabled: busy, onClick: () => void startHost() },
+                        busy ? t('startingHost') : t('startHost')),
+                    )
+                  : null,
+              ),
+          host.error && !host.listening ? h(Notice, { error: true }, `${t('hostError')}：${host.error.code} ${host.error.message}`) : null,
+          compact ? null : h('p', { style: styles.settingsNote }, t('settingsHint')),
         ),
         host.listening ? h('div', { style: styles.card },
           h('h3', { style: styles.cardTitle }, t('hostToken')),
@@ -979,13 +1339,377 @@ window.__ModuleLoader__.load({
       );
     }
 
+    function SettingsCard(props) {
+      return h('section', { style: styles.settingsCard },
+        props.title ? h('h3', { style: styles.settingsCardTitle }, props.title) : null,
+        props.description ? h('p', { style: styles.hint }, props.description) : null,
+        props.children,
+      );
+    }
+
+    function StatusBadgeRow(props) {
+      const { t, status } = props;
+      const role = status.config.role;
+      const host = status.host;
+      const remote = status.remote;
+      const hostText = host.listening
+        ? t('listening')
+        : host.starting
+          ? t('startingHost')
+          : host.stopped
+            ? t('hostStopped')
+            : host.enabled
+              ? t('hostNotRunning')
+              : t('hostDisabledByRole');
+      const remoteText = remote.active
+        ? t('connected')
+        : remote.installed
+          ? t('remoteOffline')
+          : t('local');
+      return h('div', { style: styles.settingsBadgeRow },
+        h('span', { style: styles.badge },
+          h('span', { style: dotStyle('busy') }),
+          `${t('roleTitle')}：${roleLabel(role, t)}`,
+        ),
+        h('span', { style: styles.badge },
+          h('span', { style: dotStyle(host.listening ? 'ok' : host.error ? 'error' : 'idle') }),
+          `${t('host')}：${hostText}`,
+        ),
+        h('span', { style: styles.badge },
+          h('span', { style: dotStyle(remote.active ? 'ok' : remote.installed ? 'error' : 'idle') }),
+          `${t('remote')}：${remoteText}`,
+        ),
+      );
+    }
+
+    function RoleHostForm(props) {
+      const { controller, t, status } = props;
+      const config = status.config;
+      const configKey = `${config.role}|${config.bindHost}|${config.port}|${config.label}`;
+      const [role, setRole] = React.useState(config.role);
+      const [bindHost, setBindHost] = React.useState(config.bindHost);
+      const [port, setPort] = React.useState(String(config.port));
+      const [label, setLabel] = React.useState(config.label);
+      const [busy, setBusy] = React.useState(false);
+      const [pending, setPending] = React.useState(null);
+      const [error, setError] = React.useState(null);
+      const [notice, setNotice] = React.useState('');
+      const [fieldError, setFieldError] = React.useState('');
+      const lastConfigKey = React.useRef(configKey);
+
+      const writable = status.settingsWritable === true;
+      const remoteActive = status.remote.active === true;
+      const addresses = Array.isArray(status.localAddresses) ? status.localAddresses : [];
+      const dirty = role !== config.role
+        || bindHost !== config.bindHost
+        || Number(port) !== Number(config.port)
+        || label !== config.label;
+
+      React.useEffect(() => {
+        if (busy || pending !== null) return;
+        if (lastConfigKey.current === configKey) return;
+        lastConfigKey.current = configKey;
+        setRole(config.role);
+        setBindHost(config.bindHost);
+        setPort(String(config.port));
+        setLabel(config.label);
+      }, [configKey, busy, pending, config.role, config.bindHost, config.port, config.label]);
+
+      React.useEffect(() => {
+        if (pending === null) return;
+        if (configKey === pending.key) {
+          setPending(null);
+          setBusy(false);
+          setError(null);
+          setNotice(t('settingsSaved'));
+        }
+      }, [pending, configKey, t]);
+
+      React.useEffect(() => {
+        if (pending === null) return undefined;
+        const timer = window.setTimeout(() => {
+          setPending(null);
+          setBusy(false);
+          setNotice(t('settingsMaybeSaved'));
+        }, 10000);
+        return () => window.clearTimeout(timer);
+      }, [pending, t]);
+
+      const save = async (event) => {
+        if (event) event.preventDefault();
+        if (busy) return;
+        const next = {
+          role,
+          bindHost: bindHost.trim(),
+          port: Number(port),
+          label: label.trim().slice(0, 80),
+        };
+        if (next.bindHost === '') {
+          setFieldError(`${t('bindHostLabel')}：${t('settingsFieldInvalid')}`);
+          return;
+        }
+        if (!Number.isInteger(next.port) || next.port < 1 || next.port > 65535) {
+          setFieldError(`${t('portLabel')}：${t('settingsFieldInvalid')}`);
+          return;
+        }
+        if (!writable) {
+          setError({ code: 'host/config-save-failed', message: t('settingsReadOnly') });
+          return;
+        }
+        if (remoteActive) {
+          setError({ code: 'host/remote-active', message: t('settingsRemoteActive') });
+          return;
+        }
+        if (status.host.clients.length > 0 && !window.confirm(t('settingsConfirmClients'))) return;
+        setBusy(true);
+        setError(null);
+        setNotice(t('savingSettings'));
+        setFieldError('');
+        try {
+          const result = await controller.act('saveSettings', next);
+          if (!result.ok) {
+            setError(result.error);
+            setBusy(false);
+            return;
+          }
+          if (result.value && result.value.unchanged === true) {
+            setNotice(t('settingsUnchanged'));
+            setBusy(false);
+            return;
+          }
+          setPending({ key: `${next.role}|${next.bindHost}|${next.port}|${next.label}` });
+          window.setTimeout(() => { void controller.refresh(); }, 300);
+        } catch {
+          setPending({ key: `${next.role}|${next.bindHost}|${next.port}|${next.label}` });
+          setNotice(t('settingsMaybeSaved'));
+          window.setTimeout(() => { void controller.refresh(); }, 300);
+        }
+      };
+
+      const reset = async () => {
+        if (busy) return;
+        if (!writable) {
+          setError({ code: 'host/config-save-failed', message: t('settingsReadOnly') });
+          return;
+        }
+        if (remoteActive) {
+          setError({ code: 'host/remote-active', message: t('settingsRemoteActive') });
+          return;
+        }
+        if (!window.confirm(t('settingsResetConfirm'))) return;
+        if (status.host.clients.length > 0 && !window.confirm(t('settingsConfirmClients'))) return;
+        setBusy(true);
+        setError(null);
+        setNotice('');
+        setFieldError('');
+        try {
+          const result = await controller.act('resetSettings', {});
+          if (!result.ok) {
+            setError(result.error);
+            setBusy(false);
+            return;
+          }
+          setNotice(t('settingsResetDone'));
+          window.setTimeout(() => { void controller.refresh(); }, 300);
+          window.setTimeout(() => setBusy(false), 900);
+        } catch (cause) {
+          setError(toErrorPayload(cause));
+          setBusy(false);
+        }
+      };
+
+      const undo = () => {
+        if (busy) return;
+        setRole(config.role);
+        setBindHost(config.bindHost);
+        setPort(String(config.port));
+        setLabel(config.label);
+        setError(null);
+        setNotice('');
+        setFieldError('');
+      };
+
+      const roleOptions = [
+        { id: 'client', label: t('roleClient'), hint: t('roleClientHint') },
+        { id: 'host', label: t('roleHost'), hint: t('roleHostHint') },
+        { id: 'both', label: t('roleBoth'), hint: t('roleBothHint') },
+      ];
+
+      const moveRole = (event, index, delta) => {
+        if (event.key !== 'ArrowRight' && event.key !== 'ArrowDown'
+          && event.key !== 'ArrowLeft' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        const nextIndex = (index + delta + roleOptions.length) % roleOptions.length;
+        setRole(roleOptions[nextIndex].id);
+      };
+
+      return h('form', { onSubmit: save, style: { margin: 0 } },
+        h(SettingsCard, {
+          title: t('roleTitle'),
+        },
+          h('div', { style: styles.roleGrid, role: 'radiogroup', 'aria-label': t('roleTitle') },
+            roleOptions.map((option, index) => {
+              const selected = role === option.id;
+              return h('button', {
+                key: option.id,
+                type: 'button',
+                role: 'radio',
+                'aria-checked': selected,
+                style: selected ? styles.roleOptionActive : styles.roleOption,
+                onClick: () => setRole(option.id),
+                onKeyDown: (event) => moveRole(event, index, event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1),
+              },
+                h('span', { style: styles.roleName }, option.label),
+                h('span', { style: styles.roleHint }, option.hint),
+              );
+            }),
+          ),
+          h('p', { style: styles.settingsNote }, t('roleWarning')),
+          h('div', { style: styles.settingsDivider }),
+          h('h3', { style: styles.settingsCardTitle }, t('hostSettingsTitle')),
+          h(Field, {
+            label: t('bindHostLabel'),
+            value: bindHost,
+            placeholder: t('bindHostPlaceholder'),
+            hint: t('hostSettingsHint'),
+            disabled: !writable,
+            onChange: (event) => setBindHost(event.target.value),
+          }),
+          h('div', { style: styles.field },
+            h('span', { style: styles.label }, t('detectedAddresses')),
+            addresses.length === 0
+              ? h('span', { style: styles.settingsNote }, t('noDetectedAddresses'))
+              : h('div', { style: styles.settingsBadgeRow },
+                  addresses.map((entry) => h('button', {
+                    key: entry.address,
+                    type: 'button',
+                    style: entry.address === bindHost ? styles.addressChipActive : styles.addressChip,
+                    title: entry.interfaceName,
+                    onClick: () => setBindHost(entry.address),
+                  }, `${entry.address} · ${addressKindLabel(entry.kind, t)}`)),
+                ),
+          ),
+          h('div', { style: styles.settingsGrid },
+            h(Field, {
+              label: t('portLabel'),
+              type: 'number',
+              value: port,
+              min: 1,
+              max: 65535,
+              inputMode: 'numeric',
+              disabled: !writable,
+              onChange: (event) => setPort(event.target.value),
+            }),
+            h(Field, {
+              label: t('deviceNameLabel'),
+              value: label,
+              placeholder: t('deviceNamePlaceholder'),
+              hint: t('deviceNameHint'),
+              disabled: !writable,
+              onChange: (event) => setLabel(event.target.value),
+            }),
+          ),
+          fieldError ? h(Notice, { error: true }, fieldError) : null,
+          !writable ? h(Notice, { error: true }, t('settingsReadOnly')) : null,
+          remoteActive ? h(Notice, { error: true }, t('settingsRemoteActive')) : null,
+          h('div', { style: styles.settingsActions },
+            h(Button, {
+              variant: 'primary',
+              disabled: busy || remoteActive || !writable,
+              onClick: () => void save(),
+            }, busy ? t('savingSettings') : t('saveSettings')),
+            h(Button, {
+              disabled: busy || !dirty,
+              onClick: undo,
+            }, t('settingsUndo')),
+            h(Button, {
+              variant: 'danger',
+              disabled: busy || remoteActive || !writable,
+              onClick: () => void reset(),
+            }, t('settingsReset')),
+          ),
+          h(Notice, { error: true }, error ? describeError(error, t) : ''),
+          h(Notice, {}, notice),
+          h('p', { style: styles.settingsNote }, t('settingsSourceNote')),
+        ),
+      );
+    }
+
+    function PrivateRemoteSettings(props) {
+      const { t, controller, ctx } = props;
+      const snapshot = useSnapshot(controller);
+      const status = snapshot.status;
+
+      if (!status) {
+        const phaseError = snapshot.phase === 'error';
+        return h('div', { className: 'dsh-private-remote-settings', style: styles.settingsSection },
+          h('style', null, SETTINGS_CSS),
+          h('h2', { style: styles.settingsHeading }, t('settingsTitle')),
+          h('p', { style: styles.settingsIntro }, t('settingsIntro')),
+          phaseError
+            ? h(Notice, { error: true }, describeError(snapshot.error, t))
+            : h('p', { style: styles.settingsNote }, t('loading')),
+          h('div', { style: styles.settingsActions },
+            h(Button, { onClick: () => void controller.refresh() }, t('retry')),
+          ),
+        );
+      }
+
+      const role = status.config.role;
+      const hostEnabled = roleIncludesHost(role);
+      const clientEnabled = roleIncludesClient(role);
+      const remote = status.remote;
+
+      return h('div', { className: 'dsh-private-remote-settings', style: styles.settingsSection },
+        h('style', null, SETTINGS_CSS),
+        h('h2', { style: styles.settingsHeading }, t('settingsTitle')),
+        h('p', { style: styles.settingsIntro }, t('settingsIntro')),
+        h('p', { style: styles.settingsNote }, t('settingsLocalOnly')),
+        status.configError ? h(Notice, { error: true }, `${t('configError')}：${status.configError.code} ${status.configError.message}`) : null,
+        h(StatusBadgeRow, { t, status }),
+        h(RoleHostForm, { controller, t, status }),
+        hostEnabled
+          ? h(HostView, { controller, t, status, compact: true })
+          : h(SettingsCard, { title: t('hostTitle'), description: t('hostModeDisabled') }),
+        clientEnabled
+          ? h('div', null,
+              remote.installed
+                ? h(RemoteView, {
+                    controller,
+                    t,
+                    status,
+                    useWorkspaces: props.useWorkspaces,
+                    ctx,
+                    compact: true,
+                    showWorkspaces: false,
+                  })
+                : null,
+              !remote.active
+                ? h(SettingsCard, {
+                    title: t('clientSettingsTitle'),
+                    description: t('clientSettingsHint'),
+                  },
+                    h(ClientForm, {
+                      key: `client-${remote.generation}`,
+                      controller,
+                      t,
+                      initial: status.clientConfig,
+                      bare: true,
+                    }),
+                    h('p', { style: styles.settingsNote }, t('clientSectionHint')),
+                  )
+                : null,
+            )
+          : h(SettingsCard, { title: t('clientSettingsTitle'), description: t('clientModeDisabled') }),
+      );
+    }
+
     function RemotePanel(props) {
       const controller = props.controller;
       const ctx = props.ctx;
       const t = useTranslate(ctx);
       const snapshot = useSnapshot(controller);
       const status = snapshot.status;
-      const mode = status?.mode;
 
       if (snapshot.phase === 'loading' && !status) {
         return h('div', { style: styles.panel },
@@ -1007,84 +1731,128 @@ window.__ModuleLoader__.load({
         return h('div', { style: styles.panel },
           h('h2', { style: styles.title }, t('panel')),
           h(Notice, { error: true }, `${t('configError')}：${status.configError.code} ${status.configError.message}`),
+          h('p', { style: styles.settingsNote }, t('settingsHint')),
           h(Button, { onClick: () => void controller.refresh() }, t('retry')),
         );
       }
 
-      if (mode === 'remote' || mode === 'remote-offline') {
+      const role = status.config.role;
+      if (status.remote.installed) {
         return h('div', { style: styles.panel },
           h(RemoteView, { controller, t, status, useWorkspaces: props.useWorkspaces, ctx }),
-          mode === 'remote-offline'
+          !status.remote.active
             ? h(ClientForm, { controller, t, initial: status.clientConfig })
             : null,
         );
       }
 
-      if (mode === 'host') {
+      if (roleIncludesHost(role)) {
         return h('div', { style: styles.panel },
           h(HostView, { controller, t, status }),
+          roleIncludesClient(role)
+            ? h(ClientForm, { controller, t, initial: status.clientConfig })
+            : null,
         );
       }
 
       return h('div', { style: styles.panel },
         h(ClientForm, { controller, t, initial: status.clientConfig }),
+        h('p', { style: styles.settingsNote }, t('settingsHint')),
       );
     }
 
-    function StatusPill(props) {
-      const controller = props.controller;
-      const ctx = props.ctx;
-      const t = useTranslate(ctx);
-      const snapshot = useSnapshot(controller);
-      const status = snapshot.status;
-      const mode = status?.mode;
-      const remote = status?.remote;
-      const host = status?.host;
+    function headerStatusView(status, t, snapshot) {
+      if (!status) {
+        if (snapshot?.phase === 'error') {
+          return {
+            label: t('statusUnavailable'),
+            kind: 'error',
+            title: describeError(snapshot.error, t),
+          };
+        }
+        return null;
+      }
+      if (status.configError) {
+        return {
+          label: t('configError'),
+          kind: 'error',
+          title: `${status.configError.code} ${status.configError.message}`,
+        };
+      }
+      const role = status.config.role;
+      const host = status.host;
+      const remote = status.remote;
+      const hostEnabled = roleIncludesHost(role);
       const remoteName = remote?.host
         ? hostName(remote.host, t)
         : (remote?.label || remote?.url || t('remote'));
+      const remoteDetail = remote?.installed
+        ? (remote.active
+            ? `${t('remote')}：${remoteName}${remote.url ? ` (${remote.url})` : ''}`
+            : `${t('remote')}：${t('remoteOffline')}${remote.error ? ` — ${describeError(remote.error, t)}` : ''}`)
+        : '';
 
-      let label;
-      let kind = 'idle';
-      let title;
-      if (mode === 'remote') {
-        label = `${t('panel')} · ${t('connected')} · ${remoteName}`;
-        kind = 'ok';
-        title = remote?.url || '';
-      } else if (mode === 'remote-offline') {
-        label = `${t('panel')} · ${t('remoteOffline')} · ${remoteName}`;
-        kind = 'error';
-        title = remote?.error ? describeError(remote.error, t) : '';
-      } else if (mode === 'host') {
-        label = `${t('panel')} · ${t('host')} · ${t('listening')}`;
-        kind = 'busy';
-        title = host?.url || '';
-      } else if (snapshot.phase === 'error' && !status) {
-        label = `${t('panel')} · ${t('statusUnavailable')}`;
-        kind = 'error';
-        title = describeError(snapshot.error, t);
-      } else {
-        label = `${t('panel')} · ${t('local')}`;
-        kind = 'idle';
-        title = t('clientTitle');
+      if (hostEnabled) {
+        if (host.listening) {
+          const remoteOffline = remote?.installed && !remote.active;
+          return {
+            label: `${t('host')} · ${t('listening')}${remoteOffline ? ` · ${t('remoteOffline')}` : ''}`,
+            kind: remoteOffline ? 'busy' : 'ok',
+            title: [host.url, host.info?.deviceName, remoteDetail].filter(Boolean).join('\n'),
+          };
+        }
+        if (host.starting) {
+          return {
+            label: `${t('host')} · ${t('startingHost')}`,
+            kind: 'busy',
+            title: [t('startingHost'), remoteDetail].filter(Boolean).join('\n'),
+          };
+        }
+        if (host.stopped) {
+          return {
+            label: t('hostStopped'),
+            kind: 'idle',
+            title: [host.error?.message || t('hostStoppedHint'), remoteDetail].filter(Boolean).join('\n'),
+          };
+        }
+        return {
+          label: t('settingsHostNotRunning'),
+          kind: 'error',
+          title: [host.error?.message || t('settingsHostNotRunning'), remoteDetail].filter(Boolean).join('\n'),
+        };
       }
 
-      const onClick = () => {
-        try {
-          ctx.layout?.selectPanel(PANEL_ID);
-        } catch {
-          // The sidebar entry is always available even if the layout service rejects the call.
+      if (remote?.installed) {
+        if (remote.active) {
+          return {
+            label: `${t('remote')} · ${remoteName}`,
+            kind: 'ok',
+            title: [remote.url, remoteName].filter(Boolean).join('\n'),
+          };
         }
-      };
+        return {
+          label: t('remoteOffline'),
+          kind: 'error',
+          title: remote.error ? describeError(remote.error, t) : t('remoteOffline'),
+        };
+      }
+      return null;
+    }
 
-      return h('button', {
-        type: 'button',
-        style: styles.statusPill,
-        onClick,
-        title: title || label,
+    function HeaderStatus(props) {
+      const { controller, ctx } = props;
+      const t = useTranslate(ctx);
+      const snapshot = useSnapshot(controller);
+      const view = headerStatusView(snapshot.status, t, snapshot);
+      if (!view) return null;
+      return h('span', {
+        style: styles.headerStatus,
+        role: 'status',
+        'aria-live': 'polite',
+        title: view.title || view.label,
       },
-        h('span', { style: dotStyle(kind) }),
-        h('span', { style: styles.statusText }, label),
+        h('span', { style: dotStyle(view.kind) }),
+        h('span', { style: styles.statusText }, view.label),
       );
     }
 
@@ -1135,25 +1903,17 @@ window.__ModuleLoader__.load({
         ctx.effect(() => () => controller.dispose(), 'private-remote: controller');
         const t = ctx.locale.bind(NS);
 
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-          name: 'sidebar.panellist',
+        ctx.slots.inject('conversation.header.leading', () => ctx.slots.register({
+          name: 'conversation.header.leading',
+        }, (props) => h(HeaderStatus, { ...props, controller, ctx })));
+
+        ctx.slots.inject('settings.section', () => ctx.slots.register({
+          name: 'settings.section',
           id: PANEL_ID,
-          order: 20,
+          order: 30,
           locale: NS,
           label: () => t('panel'),
-        }, RemotePanelIcon));
-
-        ctx.slots.inject('main', () => ctx.slots.register({
-          name: 'main',
-          key: PANEL_ID,
-        }, (props) => h(RemotePanel, { ...props, controller, ctx })));
-
-        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-          name: 'shell.overlay',
-          id: 'private-remote-status',
-          order: 100,
-          locale: NS,
-        }, (props) => h(StatusPill, { ...props, controller, ctx })));
+        }, (props) => h(PrivateRemoteSettings, { ...props, controller, ctx })));
 
         ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
           name: 'conversation.session.header.utilities',

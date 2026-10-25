@@ -11,6 +11,9 @@ const CONTROL_ACTIONS = new Set([
   'rotateToken',
   'dropClients',
   'forgetHostToken',
+  'saveSettings',
+  'resetSettings',
+  'startHost',
 ]);
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -119,7 +122,11 @@ export function registerControlRoute({ ctx, connection, handle, log }) {
           return;
         }
         rpcId = envelope.rpcId;
-        if (envelope.method !== `${CONTROL_CHANNEL.slice(1)}/${action}`) {
+        // The official Client Connection RPC caller sends the bare endpoint as
+        // `method` (for example "status"); accept the prefixed form too for
+        // older callers and hand-written test envelopes.
+        const prefixed = `${CONTROL_CHANNEL.slice(1)}/${action}`;
+        if (envelope.method !== action && envelope.method !== prefixed) {
           json(res, 200, { type: 'server-response', rpcId, result: fail('gateway/bad-request', '方法与控制端点不一致') });
           return;
         }

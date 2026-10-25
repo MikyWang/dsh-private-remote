@@ -3,7 +3,7 @@
  *
  * role=client  -> proxies this Host's Gateway to a paired remote Host.
  * role=host    -> serves the bridge; the local UI stays local.
- * role=both    -> both halves, useful for tests only.
+ * role=both    -> both halves, for a machine that is served and pairs out.
  */
 
 import { isIP } from 'node:net';
@@ -122,9 +122,11 @@ export function normalizeConfig(raw) {
     throw new ConfigError(ERR.NOT_CONFIGURED, 'port 必须是 1-65535 的整数');
   }
   const label = typeof input.label === 'string' ? input.label.trim().slice(0, 80) : '';
-  const bindHost = role === 'client'
-    ? '127.0.0.1'
-    : validateBindHost(input.bindHost === undefined ? '127.0.0.1' : input.bindHost);
+  // Keep the Host listen address even while the role is client: the Settings
+  // page lets a person prepare Host settings before switching modes, and the
+  // value must survive that round trip. Validation still happens for every
+  // role, so a public or wildcard address never enters the profile.
+  const bindHost = validateBindHost(input.bindHost === undefined ? '127.0.0.1' : input.bindHost);
   return { role, bindHost, port: portValue, label };
 }
 

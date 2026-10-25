@@ -16,18 +16,21 @@
  */
 
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = process.env.DSH_CLI ?? '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh';
 const HOST_HOME = path.resolve(process.env.DSH_E2E_HOST_HOME ?? path.join(root, '.tmp', 'e2e-home'));
 const CLIENT_HOME = path.resolve(process.env.DSH_E2E_CLIENT_HOME ?? path.join(root, '.tmp', 'e2e-client-home'));
-const HOST_PORT = Number(process.env.DSH_E2E_HOST_PORT ?? 47311);
-const CLIENT_PORT = Number(process.env.DSH_E2E_CLIENT_PORT ?? 47312);
-const REMOTE_PORT = Number(process.env.DSH_E2E_REMOTE_PORT ?? 47821);
+const HOST_PORT = Number(process.env.DSH_E2E_HOST_PORT ?? 18080);
+const CLIENT_PORT = Number(process.env.DSH_E2E_CLIENT_PORT ?? 18081);
+const REMOTE_PORT = Number(process.env.DSH_E2E_REMOTE_PORT ?? 18082);
 const BUNDLE = path.join(root, 'bundle');
+const HOST_PATCH = path.join(root, 'test', 'e2e', 'host-patch.yml');
+const CLIENT_PATCH = path.join(root, 'test', 'e2e', 'client-patch.yml');
 const DEMO = path.join(HOST_HOME, 'workspaces', 'demo');
 const KEEP = process.env.DSH_E2E_KEEP === '1';
 const children = new Set();
@@ -55,10 +58,12 @@ async function exists(target) {
 }
 
 function spawnProcess(args, env, label) {
-  const child = spawn(CLI, args, {
+  const invocation = resolveCli(args);
+  const child = spawn(invocation.command, invocation.args, {
     cwd: root,
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...invocation.env, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
   });
   children.add(child);
   child.stderr.setEncoding('utf8');
@@ -70,6 +75,34 @@ function spawnProcess(args, env, label) {
     if (trimmed !== '' && trimmed.includes('[private-remote]')) console.error(`  ${label}: ${trimmed}`);
   });
   return child;
+}
+
+/**
+ * Resolve the Desktop's `dsh.cmd` to the Electron executable it wraps.
+ * Spawning the `.cmd` through cmd.exe on Windows loses argument quoting and
+ * leaves a shell in the process tree; the underlying executable accepts the
+ * same CLI entry point with ELECTRON_RUN_AS_NODE=1.
+ */
+function resolveCli(args) {
+  if (process.platform !== 'win32' || !/\.(?:cmd|bat)$/i.test(CLI)) {
+    return { command: CLI, args, env: {} };
+  }
+  const binDir = path.dirname(CLI);
+  const resources = path.resolve(binDir, '..', '..', '..');
+  const appRoot = path.resolve(resources, '..');
+  const executable = path.join(appRoot, 'DeepSeek Harness.exe');
+  const asar = path.join(resources, 'app.asar');
+  const cliJs = path.join(asar, 'dsh', 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'cli.js');
+  // Plain Node cannot stat a path inside app.asar; the Electron-backed
+  // executable can. Validate the real files around the archive only.
+  if (!fsSync.existsSync(executable) || !fsSync.existsSync(asar)) {
+    throw new Error(`Cannot resolve the Desktop CLI behind ${CLI}; set DSH_CLI to the bundled runtime\\cli\\bin\\dsh.cmd`);
+  }
+  return {
+    command: executable,
+    args: ['--expose-internals', cliJs, ...args],
+    env: { ELECTRON_RUN_AS_NODE: '1' },
+  };
 }
 
 function waitForLaunch(child, label, timeoutMs = 90000) {
@@ -133,12 +166,13 @@ async function initProfile(home, label) {
 async function startHost() {
   const child = spawnProcess([
     '--profile', 'web',
-    '--patch', path.join(root, 'test', 'e2e', 'host-patch.yml'),
+    '--patch', HOST_PATCH,
     '--no-open',
     '--port', String(HOST_PORT),
   ], {
     DSH_HOME: HOST_HOME,
     E2E_OLLAMA_KEY: 'local-ollama-dummy',
+    DSH_E2E_REMOTE_PORT: String(REMOTE_PORT),
   }, 'host');
   const url = await waitForLaunch(child, 'host');
   return { child, url };
@@ -147,6 +181,7 @@ async function startHost() {
 async function startClient() {
   const child = spawnProcess([
     '--profile', 'web',
+    '--patch', CLIENT_PATCH,
     '--no-open',
     '--port', String(CLIENT_PORT),
   ], { DSH_HOME: CLIENT_HOME }, 'client');
@@ -233,6 +268,18 @@ async function runTest(hostUrl, clientUrl, sessionId) {
 
 async function stopChild(child) {
   if (child === undefined || child.exitCode !== null) return;
+  if (process.platform === 'win32') {
+    // The cmd.exe wrapper may exit before the Electron-backed child it started.
+    spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 3000);
+      child.once('exit', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+    return;
+  }
   child.kill('SIGTERM');
   await new Promise((resolve) => {
     const timer = setTimeout(() => {

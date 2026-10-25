@@ -193,8 +193,12 @@ POST /private-remote/<action>
 Content-Type: application/json
 Cookie: <官方浏览器会话 cookie>
 
-{"type":"client-request","rpcId":"...","method":"private-remote/<action>","payload":{...}}
+{"type":"client-request","rpcId":"...","method":"<action>","payload":{...}}
 ```
+
+`method` 是裸动作名（如 `status`）；官方 `ctx.connection.rpc.call('/private-remote', action, ...)`
+就是这样发送的。路由也兼容旧的 `private-remote/<action>` 形式，但路径和动作仍必须在
+白名单内。
 
 成功：
 
@@ -203,9 +207,15 @@ Cookie: <官方浏览器会话 cookie>
 ```
 
 动作：`status`、`test`、`connect`、`disconnect`、`useLocal`、`reconnect`、`hostInfo`、
-`rotateToken`、`dropClients`、`forgetHostToken`。路由先调用官方
-`connection.admit(req)`，并要求 admission 的 Peer 恰好是 `connection.browserPeer`；
-其他 Peer 一律 403。body ≤ 1 MiB；动作名、方法名、Content-Type 都校验。
+`rotateToken`、`dropClients`、`forgetHostToken`、`saveSettings`、`resetSettings`、
+`startHost`。路由先调用官方 `connection.admit(req)`，并要求 admission 的 Peer 恰好是
+`connection.browserPeer`；其他 Peer 一律 403。body ≤ 1 MiB；动作名、方法名、
+Content-Type 都校验。
+
+`saveSettings` payload 为 `{role, bindHost, port, label}`；`resetSettings` 和 `startHost`
+不带 payload。保存/重置通过官方 `configEditor.edit()` 写当前 profile 的
+`cordis.patch.yml` 并重载插件；远端 active 时返回 `host/remote-active`，非法配置返回
+`host/config-invalid`，绑定/端口预检失败返回 `host/bind-invalid`。
 
 `status.value` 的关键字段：
 
@@ -215,9 +225,11 @@ Cookie: <官方浏览器会话 cookie>
   "remote": { "installed": true, "active": true, "connected": true,
               "host": { ... }, "url": "...", "label": "...", "error": null,
               "generation": 3 },
-  "host": { "enabled": false, "listening": false, ... },
+  "host": { "enabled": false, "listening": false, "stopped": false, ... },
   "clientConfig": { "url": "...", "label": "..." },
   "config": { "role": "client", "bindHost": "127.0.0.1", "port": 47821, "label": "" },
+  "settingsWritable": true,
+  "localAddresses": [ { "address": "100.x.y.z", "family": "IPv4", "kind": "tailscale", "interfaceName": "Tailscale" } ],
   "configError": null,
   "compat": { ... },
   "protocol": 1,
@@ -249,10 +261,13 @@ BridgeClient/SSE/流，而不是客户端侧 generation 过滤。
 | `remote/protocol` | 帧/握手/JSON 格式错误。 |
 | `host/token-missing` | Host 令牌不存在或客户端内存没有令牌。 |
 | `host/credentials-unavailable` | 官方 credentials 服务不可用。 |
-| `host/bind-invalid` | `bindHost` 不是允许的私网地址。 |
+| `host/bind-invalid` | `bindHost` 不是允许的私网地址，或端口/接口预检失败。 |
+| `host/config-invalid` | 设置页提交的 role/port/bindHost 校验失败。 |
+| `host/config-save-failed` | configEditor 条目不可用/不唯一，或写入被更高层覆盖。 |
+| `host/remote-active` | 远端连接进行中，拒绝保存/重置设置。 |
 | `host/busy` | 达到最大客户端数。 |
 | `host/not-configured` | Host 桥未启动/配置错误。 |
-| `host/client-disabled` | 当前实例是 host 角色，客户端动作不可用。 |
+| `host/client-disabled` | 当前运行模式不含客户端，客户端动作不可用。 |
 | `remote/already-connected` | 该握手会话已经连接。 |
 
 官方 Gateway 的错误码（如 `gateway/bad-request`、`gateway/arguments-invalid`）原样透传。

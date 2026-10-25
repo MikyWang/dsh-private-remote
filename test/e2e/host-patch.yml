@@ -2,11 +2,17 @@
 # Everything here is local-only test configuration: no credentials, no real
 # tokens. The model points at the local Ollama daemon, so the test exercises
 # the real streaming path without touching an external API key.
+#
+# HMR is disabled for the isolated instances: on Windows the profile's
+# package.json write can arrive just after the watcher starts and trigger a
+# second webserver bind while the first listener is still closing.
+- id: hmr
+  disabled: true
 - id: private-remote
   config:
     role: host
     bindHost: 127.0.0.1
-    port: 47821
+    port: !!js Number(process.env.DSH_E2E_REMOTE_PORT || 18082)
     label: E2E Host
 - id: agent-default-model
   name: "@deepseek-ai/dsh-agent-default-model"

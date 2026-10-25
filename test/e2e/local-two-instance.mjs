@@ -23,7 +23,13 @@ import { connect as openSocket } from './ws-client.mjs';
 
 const HOST_URL = process.env.DSH_HOST_URL ?? '';
 const CLIENT_URL = process.env.DSH_CLIENT_URL ?? '';
-const REMOTE_URL = process.env.DSH_REMOTE_URL ?? 'http://127.0.0.1:47821';
+const REMOTE_URL = process.env.DSH_REMOTE_URL ?? 'http://127.0.0.1:18082';
+const REMOTE_PORT = Number(new URL(REMOTE_URL).port || 18082);
+const CLIENT_HOST_PORT = REMOTE_PORT + 1;
+const SHELL_TOOL = process.platform === 'win32' ? 'pwsh' : 'bash';
+const SHELL_COMMAND = process.platform === 'win32'
+  ? 'New-Item -ItemType Directory -Force -Path "$env:TEMP/dsh-private-remote-approval-test"'
+  : 'mkdir -p /tmp/dsh-private-remote-approval-test';
 const VERBOSE = process.env.DSH_E2E_VERBOSE === '1';
 let SESSION_ID = process.env.DSH_E2E_SESSION_ID ?? 'session-e36f55a7-53fa-490d-b544-992f20f4e993';
 
@@ -53,12 +59,59 @@ async function control(origin, cookie, action, payload = {}) {
   const res = await fetch(`${origin}/private-remote/${action}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', cookie },
-    body: JSON.stringify({ type: 'client-request', rpcId, method: `private-remote/${action}`, payload }),
+    body: JSON.stringify({ type: 'client-request', rpcId, method: action, payload }),
   });
   assert(res.status === 200, `control ${action} returned HTTP ${res.status}`);
   const body = await res.json();
   assert(body.type === 'server-response' && body.rpcId === rpcId, 'control envelope mismatch');
   return body.result;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry a local control call across the plugin reload that saveSettings and
+ * resetSettings trigger. A lost response is safe to retry: the second save
+ * sees the same configuration and answers `unchanged`.
+ */
+async function controlRetry(origin, cookie, action, payload = {}, attempts = 24) {
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await control(origin, cookie, action, payload);
+    } catch (error) {
+      lastError = error;
+      await sleep(250);
+    }
+  }
+  throw lastError;
+}
+
+function configMatches(config, expected) {
+  return config?.role === expected.role
+    && config?.bindHost === expected.bindHost
+    && Number(config?.port) === Number(expected.port)
+    && (config?.label ?? '') === (expected.label ?? '');
+}
+
+async function waitForStatus(origin, cookie, predicate, timeoutMs, label) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    try {
+      const result = await control(origin, cookie, 'status');
+      if (result.ok) {
+        last = result.value;
+        if (predicate(result.value)) return result.value;
+      }
+    } catch {
+      // The plugin entry is reloading and its control route is briefly absent.
+    }
+    await sleep(300);
+  }
+  throw new Error(`timed out waiting for ${label}: ${JSON.stringify(last?.config ?? null)}`);
 }
 
 async function api(origin, cookie, method, payload) {
@@ -241,6 +294,106 @@ async function main() {
   assert(localStatus.value.mode === 'local', `expected local mode, got ${localStatus.value.mode}`);
   log('client starts in local mode');
 
+  // Settings surface: the official configEditor must persist the same Host
+  // fields the Settings page edits, and the plugin reload must restart the
+  // Host bridge without restarting the Harness process.
+  const settingsStatus = await waitForStatus(
+    clientSide.origin,
+    clientSide.cookie,
+    (value) => value.settingsWritable === true,
+    15000,
+    'settings editor availability',
+  );
+  assert(Array.isArray(settingsStatus.localAddresses) && settingsStatus.localAddresses.length > 0, 'settings status has no local addresses');
+  assert(
+    settingsStatus.localAddresses.some((entry) => entry.address === '127.0.0.1'),
+    'loopback is missing from the address suggestions',
+  );
+  log(`settings editor writable; ${settingsStatus.localAddresses.length} local address suggestion(s)`);
+
+  const invalidBind = await controlRetry(clientSide.origin, clientSide.cookie, 'saveSettings', {
+    role: 'both',
+    bindHost: '8.8.8.8',
+    port: CLIENT_HOST_PORT,
+    label: 'E2E client host',
+  });
+  assert(invalidBind.ok === false, 'a public bind address was accepted');
+  assert(invalidBind.error.code === 'host/config-invalid', `public bind produced ${invalidBind.error.code}`);
+  log('public bind address rejected before the profile was written');
+
+  const occupiedPort = await controlRetry(clientSide.origin, clientSide.cookie, 'saveSettings', {
+    role: 'both',
+    bindHost: '127.0.0.1',
+    port: REMOTE_PORT,
+    label: 'E2E client host',
+  });
+  assert(occupiedPort.ok === false, 'the Host instance bridge port was accepted twice');
+  assert(occupiedPort.error.code === 'host/bind-invalid', `occupied port produced ${occupiedPort.error.code}`);
+  log('occupied Host bridge port rejected before reload');
+
+  const saved = await controlRetry(clientSide.origin, clientSide.cookie, 'saveSettings', {
+    role: 'both',
+    bindHost: '127.0.0.1',
+    port: CLIENT_HOST_PORT,
+    label: 'E2E client host',
+  });
+  assert(saved.ok === true, `settings save failed: ${saved.error?.code}`);
+  const savedStatus = await waitForStatus(
+    clientSide.origin,
+    clientSide.cookie,
+    (value) => configMatches(value.config, {
+      role: 'both',
+      bindHost: '127.0.0.1',
+      port: CLIENT_HOST_PORT,
+      label: 'E2E client host',
+    }) && value.host.listening === true,
+    20000,
+    'role=both Host bridge after settings save',
+  );
+  assert(savedStatus.host.url === `http://127.0.0.1:${CLIENT_HOST_PORT}`, `unexpected Host URL ${savedStatus.host.url}`);
+  assert(savedStatus.host.info?.deviceName === 'E2E client host', 'settings label did not reach the Host identity');
+  log(`settings saved without restart; role=both Host bridge listens on 127.0.0.1:${CLIENT_HOST_PORT}`);
+
+  const clientHostInfo = await controlRetry(clientSide.origin, clientSide.cookie, 'hostInfo');
+  assert(clientHostInfo.ok === true, `client hostInfo failed: ${clientHostInfo.error?.code}`);
+  const clientHostToken = clientHostInfo.value.token;
+  assert(typeof clientHostToken === 'string' && clientHostToken.length >= 32, 'client Host token missing');
+
+  const forgotten = await controlRetry(clientSide.origin, clientSide.cookie, 'forgetHostToken');
+  assert(forgotten.ok === true, `forgetHostToken failed: ${forgotten.error?.code}`);
+  await waitForStatus(
+    clientSide.origin,
+    clientSide.cookie,
+    (value) => value.host.listening === false && value.host.stopped === true,
+    15000,
+    'Host bridge stopped after token removal',
+  );
+  const restarted = await controlRetry(clientSide.origin, clientSide.cookie, 'startHost');
+  assert(restarted.ok === true, `startHost failed: ${restarted.error?.code}`);
+  await waitForStatus(
+    clientSide.origin,
+    clientSide.cookie,
+    (value) => value.host.listening === true,
+    15000,
+    'Host bridge restarted',
+  );
+  const restartedInfo = await controlRetry(clientSide.origin, clientSide.cookie, 'hostInfo');
+  assert(restartedInfo.ok === true, `restarted hostInfo failed: ${restartedInfo.error?.code}`);
+  assert(restartedInfo.value.token !== clientHostToken, 'startHost did not generate a new pairing token');
+  log('Host token removal and startHost recovery work');
+
+  const reset = await controlRetry(clientSide.origin, clientSide.cookie, 'resetSettings');
+  assert(reset.ok === true, `resetSettings failed: ${reset.error?.code}`);
+  const resetStatus = await waitForStatus(
+    clientSide.origin,
+    clientSide.cookie,
+    (value) => value.config.role === 'client' && value.host.listening === false,
+    20000,
+    'bundle-default settings after reset',
+  );
+  assert(resetStatus.config.role === 'client', `reset left role=${resetStatus.config.role}`);
+  log('settings reset removed the profile override and stopped the Host bridge');
+
   // Negative auth: a wrong token must fail at the handshake and must not leave
   // the client in remote mode or grant any remote capability.
   const wrongToken = `${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`;
@@ -255,7 +408,7 @@ async function main() {
   const unauth = await fetch(`${clientSide.origin}/private-remote/status`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ type: 'client-request', rpcId: 'e2e-unauth', method: 'private-remote/status', payload: {} }),
+    body: JSON.stringify({ type: 'client-request', rpcId: 'e2e-unauth', method: 'status', payload: {} }),
   });
   assert(unauth.status === 401, `unauthenticated control request returned HTTP ${unauth.status}`);
   log('control channel rejects an unauthenticated browser');
@@ -270,6 +423,21 @@ async function main() {
   assert(remoteStatus.value.mode === 'remote', `expected remote mode, got ${remoteStatus.value.mode}`);
   assert(remoteStatus.value.remote.connected === true, 'remote not connected');
   log('remote mode active in the local Host switch');
+
+  // Settings writes reload the plugin, so they must be refused while a remote
+  // connection is active; otherwise the official UI could keep showing remote
+  // sessions after the switch was silently uninstalled.
+  const blockedSave = await controlRetry(clientSide.origin, clientSide.cookie, 'saveSettings', {
+    role: 'both',
+    bindHost: '127.0.0.1',
+    port: CLIENT_HOST_PORT,
+    label: 'E2E blocked while remote',
+  });
+  assert(blockedSave.ok === false, 'settings were written while a remote connection was active');
+  assert(blockedSave.error.code === 'host/remote-active', `active remote save produced ${blockedSave.error.code}`);
+  const stillRemote = await control(clientSide.origin, clientSide.cookie, 'status');
+  assert(stillRemote.ok === true && stillRemote.value.remote.active === true, 'blocked settings write changed the remote mode');
+  log('settings write blocked while remote is active; remote mode unchanged');
 
   // Permission boundary: a non-allowlisted endpoint must fail at the bridge
   // instead of reaching the remote Gateway.
@@ -410,7 +578,7 @@ async function main() {
         requestId: `e2e-approval-${marker}`,
         sessionId: SESSION_ID,
         mode: 'queue',
-        content: [{ type: 'text', text: 'Call the bash tool exactly once with these exact arguments: command = "mkdir -p /tmp/dsh-private-remote-approval-test", description = "Create approval test dir", sandbox_permissions = "danger-full-access", justification = "E2E test must verify the approval round-trip." Then reply with exactly DONE and nothing else.' }],
+        content: [{ type: 'text', text: `Call the ${SHELL_TOOL} tool exactly once with these exact arguments: command = ${JSON.stringify(SHELL_COMMAND)}, description = "Create approval test dir", sandbox_permissions = "danger-full-access", justification = "E2E test must verify the approval round-trip." Then reply with exactly DONE and nothing else.` }],
         clientTimeZone: 'Asia/Shanghai',
       },
     },
@@ -424,7 +592,7 @@ async function main() {
   );
   const eventId = approval.value.eventId;
   assert(typeof eventId === 'string' && eventId !== '', 'approval/request frame lacks an eventId');
-  assert(approval.value.request?.toolName === 'bash', `approval/request names ${approval.value.request?.toolName ?? 'nothing'} rather than bash`);
+  assert(approval.value.request?.toolName === SHELL_TOOL, `approval/request names ${approval.value.request?.toolName ?? 'nothing'} rather than ${SHELL_TOOL}`);
   log(`remote approval/request delivered through the switched mux (${approval.value.request.toolName})`);
   const answered = await api(clientSide.origin, clientSide.cookie, '$events/result', {
     args: {

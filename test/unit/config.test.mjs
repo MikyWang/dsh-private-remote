@@ -47,10 +47,27 @@ test('config defaults and role validation', () => {
   assert.deepEqual(normalizeConfig({ role: 'host', bindHost: '100.68.241.8', port: 50000, label: 'Win' }), {
     role: 'host', bindHost: '100.68.241.8', port: 50000, label: 'Win',
   });
+  assert.deepEqual(normalizeConfig({ role: 'both', bindHost: '100.68.241.8', port: 50000, label: 'Win' }), {
+    role: 'both', bindHost: '100.68.241.8', port: 50000, label: 'Win',
+  });
   assert.throws(() => normalizeConfig({ role: 'server' }), (error) => error instanceof ConfigError);
   assert.throws(() => normalizeConfig({ role: 'host', bindHost: '0.0.0.0' }), (error) => error.code === 'host/bind-invalid');
   assert.throws(() => normalizeConfig({ port: 0 }), (error) => error instanceof ConfigError);
   assert.throws(() => normalizeConfig({ port: 65536 }), (error) => error instanceof ConfigError);
+});
+
+test('client mode keeps and validates the Host listen address for a later role switch', () => {
+  assert.deepEqual(normalizeConfig({ role: 'client', bindHost: '100.68.241.8' }), {
+    role: 'client', bindHost: '100.68.241.8', port: 47821, label: '',
+  });
+  assert.throws(
+    () => normalizeConfig({ role: 'client', bindHost: '8.8.8.8' }),
+    (error) => error instanceof ConfigError && error.code === 'host/bind-invalid',
+  );
+  assert.throws(
+    () => normalizeConfig({ role: 'client', bindHost: '0.0.0.0' }),
+    (error) => error instanceof ConfigError && error.code === 'host/bind-invalid',
+  );
 });
 
 test('private host classifier treats Tailscale CGNAT as private but public IPv4 as public', () => {

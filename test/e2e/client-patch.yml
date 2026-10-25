@@ -1,0 +1,5 @@
+# Isolated Client instance used by test/e2e/local-two-instance.mjs.
+# The profile keeps its default role=client; HMR is disabled for the same
+# Windows boot race documented in host-patch.yml.
+- id: hmr
+  disabled: true

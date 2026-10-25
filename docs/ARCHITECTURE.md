@@ -7,8 +7,8 @@
 - **官方界面不复制**：不新建会话页面，复用官方 conversation UI、侧栏、审批和提问卡片。
 - **Host 是权威**：模型请求、工具执行、项目文件、会话日志、工作区注册表都在 Host 的
   官方服务里；客户端只做转发和展示。
-- **一条连接、两种角色**：同一个包按 `role` 配置成 `client` 或 `host`；`both` 只用于
-  本机测试。
+- **一条连接、多种角色**：同一个包按 `role` 配置成 `client`、`host` 或 `both`；`both`
+  是正式支持的“既被连又连远端”模式，可在官方 Settings 页选择。
 - **默认拒绝**：远程 Peer 只能调用白名单端点；断线时失败，不回退本地。
 
 ## 2. 进程与组件
@@ -17,15 +17,17 @@
 
 | 组件 | 文件 | 职责 |
 | --- | --- | --- |
-| 浏览器 UI 插件 | `src/client.js` | 注册“私人远程”面板、状态胶囊、会话标题胶囊；通过 `ctx.connection.rpc.call('/private-remote', ...)` 调用本机控制通道；调用官方 `uiWorkspace.openWorkspace` 打开远端工作区。 |
+| 浏览器 UI 插件 | `src/client.js` | 注册顶部状态胶囊、官方 Settings 设置页、会话标题胶囊；通过 `ctx.connection.rpc.call('/private-remote', ...)` 调用本机控制通道；调用官方 `uiWorkspace.openWorkspace` 打开远端工作区。 |
+| 设置页 | `src/client.js` 的 `settings.section` | 客户端/Host/两者模式、监听地址/端口/设备名、保存/恢复默认、客户端连接和令牌管理。 |
 | 控制通道 | `src/host/control-route.js` | 在官方 `webServer` 上注册 `/private-remote/*` 前缀路由；用官方 `connection.admit(req)` 校验浏览器 cookie，并要求 Peer 等于 `connection.browserPeer`。 |
-| 控制器 | `src/host/controller.js` | 读取配置；创建/关闭 BridgeClient；安装/卸载 Gateway switch；维护 remote/host 状态；持久化 URL/标签；管理 Host 令牌轮换等。 |
+| 控制器 | `src/host/controller.js` | 读取配置；创建/关闭 BridgeClient；安装/卸载 Gateway switch；维护 remote/host 状态；持久化 URL/标签；管理 Host 令牌轮换、设置保存和 Host 启动等。 |
+| 设置持久化 | `src/host/settings.js` + 官方 `configEditor` | 合并 role/bindHost/port/label，预检监听地址/端口，写入 profile 的 `cordis.patch.yml` 并由 Loader 重载插件。 |
 | Gateway switch | `src/host/gateway-switch.js` | 替换本机 `typertGateway.dispatchRpc` 和 `openWireStream` 两个数据路径函数。 |
 | BridgeClient | `src/host/bridge-client.js` | 与远端 Host 握手、建立 SSE 下行、加密帧、流队列、取消和断线处理。 |
 
 控制通道动作：`status`、`test`、`connect`、`disconnect`、`useLocal`、`reconnect`、
-`hostInfo`、`rotateToken`、`dropClients`、`forgetHostToken`。它只接受本机已认证浏览器
-Peer；远端桥不能调用控制通道。
+`hostInfo`、`rotateToken`、`dropClients`、`forgetHostToken`、`saveSettings`、
+`resetSettings`、`startHost`。它只接受本机已认证浏览器 Peer；远端桥不能调用控制通道。
 
 ### 2.2 Host（另一台机器）
 
@@ -66,13 +68,13 @@ UI 挂载点（全部由官方 Slot 系统渲染）：
 
 | Slot | id | 作用 |
 | --- | --- | --- |
-| `sidebar.panellist` | `private-remote` | 中文“私人远程”侧栏入口和图标。 |
-| `main` | key `private-remote` | 主面板：连接表单、Host 信息、工作区列表、断开/切回本机。 |
-| `shell.overlay` | `private-remote-status` | 右下角状态胶囊：本地/远程/离线/Host。 |
-| `conversation.session.header.utilities` | `private-remote-workspace` | 会话标题旁的 Host/工作区胶囊。 |
+| `conversation.header.leading` | 无（单槽位） | 顶部状态胶囊：Host 监听/未运行、远程已连接/已断开；本地空闲时隐藏。 |
+| `settings.section` | id `private-remote`，order 30 | 官方 Settings 页：运行模式、Host 监听地址/端口/设备名、保存/恢复默认、客户端连接和令牌管理。 |
+| `conversation.session.header.utilities` | `private-remote-workspace` | 会话标题旁的远端 Host/工作区胶囊。 |
 
-连接、断开、切回本机后，面板调用 `window.location.reload()`，让官方 UI 的 store 重新从
-当前生效的 Host 拉取工作区/会话，避免把上一模式的内存状态继续画出来。
+连接、断开、切回本机由设置页的客户端表单/远端摘要触发；成功后调用
+`window.location.reload()`，让官方 UI 的 store 重新从当前生效的 Host 拉取工作区/会话。
+顶部状态胶囊只订阅 `status` 并轮询，不触发页面刷新。
 
 ## 4. 连接生命周期
 
@@ -90,6 +92,26 @@ local ──connect──► remote ──disconnect──► remote-offline ─
   拿旧令牌重连；用户必须重新输入令牌（令牌只在内存）或显式切回本机。
 - `useLocal`：断开 BridgeClient、卸载 switch、删除 `client.json`、清空内存令牌。
 - `disconnect`：只断开连接，保留 switch 和 URL/标签，进入 `remote-offline`。
+
+### 4.1 设置保存生命周期
+
+```text
+Settings 页 → saveSettings
+  → 校验 normalizeConfig + probeBind/地址接口检查
+  → configEditor.edit(private-remote entry, raw => raw + role/bindHost/port/label)
+  → profile cordis.patch.yml 追加/更新 private-remote 覆盖行
+  → Loader reconcile：旧 controller dispose（await Host server.close）→ 新 controller apply
+  → role 含 Host 则 Host 桥启动；role=client 则停止；client.json 仍按原逻辑恢复 remote-offline
+  → Settings 页轮询 status 确认
+```
+
+- `resetSettings` 返回 `inherited` 配置，让 configEditor 删除 profile 覆盖、恢复 bundle 默认。
+- 远端连接 active 时保存/重置被拒绝（`host/remote-active`），避免重载悄悄断开远端后
+  官方 UI 继续显示远端会话。
+- `saveSettings` 在绑定地址/端口变化时先 `probeBind`；如果旧 Host 桥仍占用同一端口，
+  改用本机接口地址检查，避免 Windows 上第二个 listener 的 `EADDRINUSE`。
+- `startHost` 用于删除令牌后、或绑定失败修正后重新启动 Host 桥；新令牌由
+  `getOrCreateHostToken` 生成。
 
 ## 5. 数据路径
 
@@ -146,6 +168,9 @@ local ──connect──► remote ──disconnect──► remote-offline ─
   `sessionId`/nonce/密钥。旧帧没有继续进入新连接的通道。
 - **页面级刷新**：进入远程/切回本机后刷新页面，官方 UI 的内存 store 重建，重新按当前
   生效的 Host 拉取；插件本身不持久化远端工作区/会话缓存。
+- **配置优先级**：bundle 默认值 < profile 的 `cordis.patch.yml` 覆盖。Settings 保存写
+  profile 覆盖，第一次保存会把当时的完整配置 pin 到 profile；`resetSettings` 删除覆盖。
+  home patch 和命令行 overlay 优先级更高，`configEditor` 会拒绝被它们覆盖的写入。
 - **Host 身份**：Host 在 `host-meta.json` 持久化 `hostId`，在 `ready.host` 中报告
   deviceName/hostname/platform/harnessVersion；客户端状态只显示最近一次成功认证的 Host。
   工作区/会话 id 由 Host 的官方服务生成，客户端不按本地路径重建。
@@ -170,6 +195,8 @@ local ──connect──► remote ──disconnect──► remote-offline ─
 
 - 客户端 UI 的“远端工作区列表”来自官方 workspace store，经 `workspace/follow` 转发；
   第一版没有为每个 Host 做持久化缓存命名空间，依赖单一活动 Host + 页面刷新隔离。
+- 设置保存通过 configEditor 重载整个插件行；正在连接远端时禁止保存，需先切回本机。
+  重载也会断开 Host 客户端，前端会先确认。
 - 没有独立审计日志；连接历史只在 Host 内存（`clientInfos`）和日志行里。
 - 没有自动重连；断线后必须显式“重新连接”，且需要内存中的令牌。
 - HTTP 传输依赖 Tailscale/私网或 SSH 隧道；插件不做 TLS 终止，公网地址必须显式

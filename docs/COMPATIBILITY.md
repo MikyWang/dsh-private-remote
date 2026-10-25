@@ -4,19 +4,21 @@
 
 | 组件 | 版本/环境 | 状态 |
 | --- | --- | --- |
-| DeepSeek Harness Desktop | `0.2.1-rc.3`（macOS，Electron） | 已验证安装、4 个 UI 挂载点 active、本机双实例联调 |
+| DeepSeek Harness Desktop | `0.2.1-rc.3`（Windows 11 x64，Electron） | 已验证安装、本机双实例 E2E、设置页 configEditor、3 个 UI 挂载点 |
 | 随 Desktop 的 Harness/CLI | `0.2.1-rc.3` | 已验证 |
 | Cordis | `4.0.5` | 由官方 Desktop 提供，未单独锁定 |
-| Node.js | `v24.21.0` | 已验证构建/测试 |
-| pnpm | `11.28.5`（Desktop 内置） | 已验证 profile 安装 |
-| 插件 | `0.1.0`，协议 `1` | 已验证 |
-| Windows Host | — | **未验证**（无第二台 Windows/Tailscale 机器） |
+| Node.js | `v24.21.0`（Desktop 运行时）/ `v24.16.0`（本机构建） | 已验证构建/测试 |
+| pnpm | `11.28.5`（Desktop 内置）/ `11.25.0`（本机） | 已验证 profile 安装 |
+| 插件 | `0.1.0`，协议 `1` | 已验证（含 Settings 设置页） |
+| macOS 客户端 | `0.2.1-rc.3` | 早期版本已验证；本次设置页变更未在 macOS 复测 |
+| Windows Host | Windows 11 x64 | 本机 loopback E2E 已验证；Tailscale/防火墙真实双机未验证 |
 | 其他 DSH 版本 | — | **不支持**；见第 5 节 |
-| 其他操作系统客户端 | — | 未验证；客户端角色只依赖浏览器与 Node 服务 |
 
-本机环境：macOS `27.0.1` arm64，Desktop Host `127.0.0.1`，`DSH_HOME=/Users/wangqiyuan/.dsh`，
-`DSH_PROFILE=desktop`。Desktop 构建提交 `be72761ee1a6736ebcdf4f3739363b083ae53c98`
-（nightly channel）。这些事实来自已安装版本，不是仓库主干假设。
+本机环境（早期验证）：macOS `27.0.1` arm64，Desktop Host `127.0.0.1`，
+`DSH_HOME=/Users/wangqiyuan/.dsh`，`DSH_PROFILE=desktop`。本轮环境：Windows 11 x64，
+Desktop `0.2.1-rc.3`，`DSH_HOME=C:\Users\milkspun\.dsh`，`DSH_PROFILE=desktop`；
+隔离 E2E 使用 `.tmp/e2e-home` / `.tmp/e2e-client-home`，端口 18080/18081/18082。
+这些事实来自已安装版本，不是仓库主干假设。
 
 ## 2. 依赖的官方契约
 
@@ -28,11 +30,12 @@
 | `ctx.effect(fn, label)` / `ctx.inject([...], fn)` | 生命周期/服务注入 | 官方 Cordis 用法 |
 | `ctx.webServer.register({kind:'prefix', path, handler})` | 控制通道 | 官方 webServer 服务 |
 | `ctx.connection.admit(req)`、`ctx.connection.browserPeer` | 浏览器 cookie/Peer 校验 | 官方 connection 服务 |
-| `ctx.connection.rpc.call(channel, endpoint, payload, signal)` | 浏览器插件调用本机控制通道 | 官方客户端 connection 服务 |
+| `ctx.connection.rpc.call(channel, endpoint, payload, signal)` | 浏览器插件调用本机控制通道 | 官方客户端 connection 服务；POST `<channel>/<endpoint>`，body 的 `method` 是裸 endpoint（如 `status`），不把 channel 写进 method |
+| `ctx.configEditor.entries()` / `edit(entry, change)` | Settings 保存 role/bindHost/port/label，写 profile 并重载 | 官方 configEditor 服务；只适用于 root-Include 的唯一 entry |
+| `ctx.slots.register({ name: 'settings.section', ... })` | 官方 Settings 页 | 官方 Slot 系统；shell 提供内边距/滚动，页面自带标题 |
 | `ctx.credentials.resolve/set/unset` | Host 令牌存储 | 官方 credentials 服务；引用名需匹配 `/^[A-Za-z_][A-Za-z0-9_]*$/` |
-| `ctx.slots.inject/register` | 面板、状态胶囊、会话标题胶囊 | 官方 Slot 系统 |
+| `ctx.slots.inject/register` | 顶部状态胶囊、设置页、会话标题胶囊 | 官方 Slot 系统 |
 | `ctx.locale.register/bind/subscribe` | 中英文案 | 官方 locale 服务 |
-| `ctx.layout.selectPanel(id)` | 状态胶囊跳到面板 | 官方 layout 服务 |
 | `ctx.uiWorkspace.openWorkspace(id)` | 打开远端工作区 | 官方工作区 UI 服务 |
 | `package.json` 的 `dsh.bundle.patch`、`dsh.client`、`./client` 导出 | bundle 安装与浏览器加载 | 官方 bundle/ModuleLoader 契约 |
 
@@ -63,7 +66,7 @@ Host 启动时 `probeGateway` 检查：
 - `claimsEndpoint` 必须 claim 住 `session/page`、`session/prompt`、`session/follow`、
   `workspace/follow`、`$events/result`。
 
-任一缺失：`compat.ok=false`，Host 面板显示“官方 Gateway 契约不匹配”，桥不启动。插件
+任一缺失：`compat.ok=false`，Host 设置页显示“官方 Gateway 契约不匹配”，桥不启动。插件
 不会猜一个相近接口继续跑。
 
 ### 2.3 依赖的官方端点/形状
@@ -82,8 +85,19 @@ Host 启动时 `probeGateway` 检查：
 - `workspace/follow` 首帧是 `{type:'baseline', value:{items, order, archived, pinned}}`。
 - `session/follow` 的 args 是 `{request:{address:{kind:'session',sessionId}, assistantStream}}`。
 - 官方 approval outcome 词汇：`allowed-once`、`rejected` 等。
-- 官方 UI 的 Slot 键：`sidebar.panellist`、`main`、`shell.overlay`、
-  `conversation.session.header.utilities`。
+- 官方 UI 的 Slot 键：`conversation.header.leading`、`settings.section`、
+  `conversation.session.header.utilities`。侧栏入口、主面板和右下角悬浮胶囊已移除；
+  顶部状态由 `conversation.header.leading`（single、root-scope、无 registration options，
+  注册只传 `{name}`）渲染。
+- `settings.section` 的 shell 契约：`.options` 提供 `padding:0 24px 24px` 和滚动；
+  registrant 自绘标题；声明 `locale` 才会注入 `t`，owner props 只有 `{close}`。
+- `configEditor.entries()` 只返回 parent entry id 为 `include` 且 patch id 唯一的行；
+  bundle insert 行在 profile 中表现为 `include:private-remote` / `options.id=private-remote`，
+  `edit()` 会在 profile patch 追加/更新 `private-remote` 覆盖行。nested Include、重复 id、
+  home patch/命令行覆盖会被拒绝。
+- `configEditor.edit()` 的 `reconcileProfilePatches` 会等待旧 fiber dispose 后再激活新
+  fiber；插件必须在 dispose 里 await `server.close()`，否则新 listener 可能
+  `EADDRINUSE`。本插件的 `BridgeServer.stop()` 已 await server/socket 关闭。
 
 这些形状已经由本机双实例 E2E 实际跑通；升级时必须重新核对。
 
@@ -101,12 +115,15 @@ Host 启动时 `probeGateway` 检查：
 
 - 官方 Desktop 的 `desktop` profile 由 Electron 独占，不能用
   `dsh --profile desktop` 启动；安装/管理走官方插件管理器或 `dsh plugin`。
-- 插件以 `link:` 方式安装到 `~/.dsh/profiles/desktop`，指向本仓库 `bundle/`。
-  重新构建后 Host 侧代码需重启 Harness 生效；浏览器 `client.js` 刷新页面生效。
+- 插件以 `link:` 方式安装到 profile，指向本仓库 `bundle/`。重新构建后 Host 侧代码需
+  重启 Harness 生效；浏览器 `client.js` 刷新页面生效。
+- Settings 页保存通过 `configEditor.edit()` 写当前 profile 的 `cordis.patch.yml`，并让
+  Loader 重载 `private-remote` 行；不需要为改设置重启 Harness。首次保存会把完整配置
+  pin 到 profile，`resetSettings` 删除覆盖。
 - 隔离测试 profile 是普通 `web` profile，可用
   `dsh --profile web --patch ... --no-open --port ...` 启动。
 - 官方 Desktop 的 UI 挂载点已在本机 live 校验；升级 DSH 后应重新用 Cordis Inspect
-  查询 Slot，确认 4 个 occupant 仍 active。
+  查询 Slot，确认 3 个 occupant 仍 active（含 `settings.section`）。
 
 ## 5. 升级流程（给未来的自己）
 
@@ -118,13 +135,18 @@ Host 启动时 `probeGateway` 检查：
    `engines.dsh` 和 `docs/COMPATIBILITY.md`。
 5. 重跑 `npm run check`、`npm test`、`npm run build`、`npm run verify`、
    `npm run test:e2e`。
-6. 在官方 Desktop 重新安装/重载，确认 4 个 Slot、连接、会话、审批、提问、停止。
+6. 在官方 Desktop 重新安装/重载，确认 3 个 Slot、连接、会话、审批、提问、停止，以及
+   设置页保存/恢复默认。
 7. 记录旧版本是否仍支持；不支持就明确写在本文，不要悄悄放宽版本范围。
 
 ## 6. 已知不兼容/未验证
 
-- Windows Host 未实测：路径大小写/分隔符由 `shared/paths.js` 按 Host 平台处理，但
-  没有 Windows 真机证据；防火墙和 Tailscale 绑定也未实测。
+- Windows Host 的 Tailscale/防火墙未实测；本机 loopback E2E 已验证。本机 WSL2 使用
+  `networkingMode=mirrored`，其 Linux 临时端口段 44620-48715 会被 Windows 保留；
+  默认 47821 在其中，即使无进程监听也 `EADDRINUSE`。Settings 页会显示
+  `host/bind-invalid`，换 18082 等段外空闲端口即可。
+- 官方 Desktop 页面里的设置页像素级视觉/交互未做自动化验收；slot 注册和
+  `settingsWritable` 已通过 live 检查，视觉需人工确认。
 - 计时提问 schema 分支未实测；本机隔离 Host 暴露的是阻塞式 `ask_user_question`。
 - 斜杠命令 `commands/execute` 不在白名单；官方 composer 的普通文字发送不受影响。
 - 非 `web` 客户端平台未验证；bundle 的 `dsh.client.platform` 固定为 `web`。

@@ -26,6 +26,14 @@ import {
   toFailure,
 } from '../shared/protocol.js';
 import { DEFAULT_CONFIG, ConfigError, normalizeConfig, validateRemoteUrl } from './config.js';
+import {
+  assertLocalBindAddress,
+  buildSettingsConfig,
+  findSettingsEntry,
+  listLocalAddresses,
+  probeBind,
+  settingsChanged,
+} from './settings.js';
 import { BridgeClient } from './bridge-client.js';
 import { BridgeServer } from './bridge-server.js';
 import { createGatewaySwitch } from './gateway-switch.js';
@@ -60,6 +68,11 @@ function errorOf(error) {
   return fail(ERR.INTERNAL, error instanceof Error ? error.message : String(error));
 }
 
+function roleIncludesHost(roleOrConfig) {
+  const role = typeof roleOrConfig === 'string' ? roleOrConfig : roleOrConfig?.role;
+  return role === 'host' || role === 'both';
+}
+
 export class PrivateRemoteController {
   /**
    * @param {any} ctx
@@ -85,6 +98,8 @@ export class PrivateRemoteController {
     this.hostStarting = false;
     this.intentionalClose = false;
     this.disposed = false;
+    this.configEditor = null;
+    this.hostDeps = null;
     this.remoteState = {
       installed: false,
       active: false,
@@ -97,12 +112,13 @@ export class PrivateRemoteController {
       generation: 0,
     };
     this.hostState = {
-      enabled: false,
+      enabled: roleIncludesHost(this.config),
       listening: false,
       host: this.config.bindHost,
       port: this.config.port,
       url: null,
       error: null,
+      stopped: false,
     };
     this.clientConfig = { url: '', label: '' };
     this.configDir = path.join(dshHome(), 'private-remote');
@@ -136,14 +152,22 @@ export class PrivateRemoteController {
       }
       this.ensureSwitch();
     });
+    this.ctx.inject(['configEditor'], (c) => {
+      this.configEditor = c.configEditor;
+      this.log.info('official config editor available');
+      return () => {
+        if (this.configEditor === c.configEditor) this.configEditor = null;
+      };
+    });
     this.ctx.inject(['connection', 'typertGateway', 'credentials'], (c) => {
       this.connection = c.connection;
       this.gateway = c.typertGateway;
       this.credentials = c.credentials;
+      this.hostDeps = c;
       this.compat = probeGateway(c.typertGateway);
       this.ensureSwitch();
-      if (this.config.role === 'host' || this.config.role === 'both') {
-        void this.startHostBridge(c);
+      if (roleIncludesHost(this.config)) {
+        void this.startHostBridge();
       }
     });
     // A persisted pairing starts in remote mode but offline: browser calls are
@@ -172,33 +196,41 @@ export class PrivateRemoteController {
     }
   }
 
-  async startHostBridge(c) {
+  async startHostBridge() {
+    if (this.disposed) return;
     if (this.hostStarting || this.hostServer !== null) return;
     this.hostStarting = true;
     this.hostState = {
-      enabled: false,
+      enabled: roleIncludesHost(this.config),
       listening: false,
       host: this.config.bindHost,
       port: this.config.port,
       url: null,
       error: null,
+      stopped: false,
     };
     try {
+      const deps = this.hostDeps;
+      if (deps === null) {
+        const error = new Error('Host 服务尚未注入完成；请稍后重试');
+        error.code = ERR.NOT_CONFIGURED;
+        throw error;
+      }
       if (this.configError !== null) {
         throw this.configError;
       }
-      const compat = probeGateway(c.typertGateway);
+      const compat = probeGateway(deps.typertGateway);
       this.compat = compat;
       if (!compat.ok) {
         const error = new Error(`官方 Gateway 契约不匹配：${compat.missing.join(', ')}`);
         error.code = ERR.UNSUPPORTED;
         throw error;
       }
-      const token = await getOrCreateHostToken(c.credentials);
+      const token = await getOrCreateHostToken(deps.credentials);
       const hostId = await this.hostIdPromise;
       const server = new BridgeServer({
-        connection: c.connection,
-        gateway: c.typertGateway,
+        connection: deps.connection,
+        gateway: deps.typertGateway,
         config: this.config,
         token,
         hostId,
@@ -208,6 +240,14 @@ export class PrivateRemoteController {
         onChange: () => undefined,
       });
       await server.start();
+      if (this.disposed) {
+        try {
+          await server.stop();
+        } catch {
+          // The controller is already unloading; the listener must not leak.
+        }
+        return;
+      }
       this.hostServer = server;
       this.hostState = {
         enabled: true,
@@ -216,11 +256,12 @@ export class PrivateRemoteController {
         port: server.port,
         url: server.listenUrl(),
         error: null,
+        stopped: false,
       };
       this.log.info('host role ready on', server.listenUrl());
     } catch (error) {
       this.hostState = {
-        enabled: false,
+        enabled: roleIncludesHost(this.config),
         listening: false,
         host: this.config.bindHost,
         port: this.config.port,
@@ -229,6 +270,7 @@ export class PrivateRemoteController {
           code: typeof error?.code === 'string' ? error.code : ERR.NOT_CONFIGURED,
           message: error instanceof Error ? error.message : String(error),
         },
+        stopped: false,
       };
       this.log.error('host role failed:', typeof error?.code === 'string' ? error.code : 'unknown', error instanceof Error ? error.message : String(error));
     } finally {
@@ -265,6 +307,12 @@ export class PrivateRemoteController {
           return await this.dropClientsAction();
         case 'forgetHostToken':
           return await this.forgetHostTokenAction();
+        case 'saveSettings':
+          return await this.saveSettingsAction(input);
+        case 'resetSettings':
+          return await this.resetSettingsAction();
+        case 'startHost':
+          return await this.startHostAction();
         default:
           return fail(ERR.PROTOCOL, `未知控制操作 ${String(endpoint)}`);
       }
@@ -286,9 +334,10 @@ export class PrivateRemoteController {
       generation: this.remoteState.generation,
     };
     const host = {
-      enabled: this.config.role === 'host' || this.config.role === 'both',
+      enabled: roleIncludesHost(this.config),
       listening: this.hostServer !== null,
       starting: this.hostStarting,
+      stopped: this.hostState.stopped === true,
       host: this.config.bindHost,
       port: this.hostServer?.port ?? this.config.port,
       url: this.hostServer?.listenUrl() ?? null,
@@ -296,6 +345,12 @@ export class PrivateRemoteController {
       clients: this.hostServer?.clientInfos() ?? [],
       error: this.hostState.error,
     };
+    let localAddresses = [];
+    try {
+      localAddresses = listLocalAddresses();
+    } catch {
+      localAddresses = [];
+    }
     return {
       mode: remote.installed ? (remote.active ? 'remote' : 'remote-offline') : (host.listening ? 'host' : 'local'),
       remote,
@@ -307,6 +362,8 @@ export class PrivateRemoteController {
         port: this.config.port,
         label: this.config.label,
       },
+      settingsWritable: this.configEditor !== null,
+      localAddresses,
       configError: this.configError === null ? null : {
         code: this.configError.code,
         message: this.configError.message,
@@ -358,7 +415,7 @@ export class PrivateRemoteController {
 
   async testConnection(input) {
     if (this.config.role === 'host') {
-      return fail(ERR.CLIENT_DISABLED, '当前实例配置为 host 角色，客户端面板不可用');
+      return fail(ERR.CLIENT_DISABLED, '当前运行模式为 Host；请先在 设置 → 私人远程 中切换到“客户端”或“两者”');
     }
     const parsed = this.parseConnectInput(input);
     const client = this.createBridgeClient(parsed);
@@ -372,7 +429,7 @@ export class PrivateRemoteController {
 
   async connectAction(input) {
     if (this.config.role === 'host') {
-      return fail(ERR.CLIENT_DISABLED, '当前实例配置为 host 角色，客户端面板不可用');
+      return fail(ERR.CLIENT_DISABLED, '当前运行模式为 Host；请先在 设置 → 私人远程 中切换到“客户端”或“两者”');
     }
     const parsed = this.parseConnectInput(input);
     if (this.configError !== null) return errorOf(this.configError);
@@ -428,7 +485,7 @@ export class PrivateRemoteController {
 
   async useLocalAction() {
     if (this.config.role === 'host') {
-      return fail(ERR.CLIENT_DISABLED, '当前实例配置为 host 角色，本机切换不可用');
+      return fail(ERR.CLIENT_DISABLED, '当前运行模式为 Host；本机切换仅用于客户端模式');
     }
     await this.disconnectInternal();
     this.switch?.uninstall();
@@ -467,7 +524,7 @@ export class PrivateRemoteController {
 
   async reconnectAction() {
     if (this.config.role === 'host') {
-      return fail(ERR.CLIENT_DISABLED, '当前实例配置为 host 角色，客户端面板不可用');
+      return fail(ERR.CLIENT_DISABLED, '当前运行模式为 Host；请先在 设置 → 私人远程 中切换到“客户端”或“两者”');
     }
     const { url, token, label } = this.remoteState;
     if (typeof url !== 'string' || url === '' || typeof token !== 'string' || token === '') {
@@ -479,7 +536,7 @@ export class PrivateRemoteController {
 
   async hostInfoAction() {
     if (this.hostServer === null) {
-      return fail(ERR.NOT_CONFIGURED, 'Host 桥未启动；请把 role 设为 host 并重启 Harness');
+      return fail(ERR.NOT_CONFIGURED, 'Host 桥未启动；请在 设置 → 私人远程 中启用 Host，或点击“启动 Host 桥”');
     }
     const token = await readHostToken(this.credentials);
     if (token === null) return fail(ERR.TOKEN_MISSING, 'Host 令牌不存在');
@@ -518,16 +575,99 @@ export class PrivateRemoteController {
     this.hostServer = null;
     if (server !== null) await server.stop();
     this.hostState = {
-      enabled: false,
+      enabled: roleIncludesHost(this.config),
       listening: false,
       host: this.config.bindHost,
       port: this.config.port,
       url: null,
-      error: null,
+      error: {
+        code: ERR.TOKEN_MISSING,
+        message: 'Host 令牌已删除；Host 桥已停止，可点击“启动 Host 桥”生成新令牌',
+      },
+      stopped: true,
     };
     await forgetHostToken(this.credentials);
-    this.log.info('host token removed; host bridge stopped until restart');
+    this.log.info('host token removed; host bridge stopped until restarted');
     return ok(this.status());
+  }
+
+  async saveSettingsAction(input) {
+    if (this.remoteState.active) {
+      return fail(ERR.REMOTE_ACTIVE, '正在连接远端；请先“切换回本机”再修改 Host 设置');
+    }
+    let normalized;
+    try {
+      normalized = normalizeConfig(input);
+    } catch (error) {
+      throw new ConfigError(
+        ERR.CONFIG_INVALID,
+        error instanceof Error ? error.message : String(error),
+        error?.details !== null && typeof error?.details === 'object' ? error.details : {},
+      );
+    }
+    if (this.configEditor === null) {
+      return fail(ERR.UNSUPPORTED, '官方配置编辑器不可用；请用 cordis.patch.yml 配置后重启 Harness');
+    }
+    const entry = findSettingsEntry(this.configEditor.entries());
+    const currentRaw = entry.options.config ?? {};
+    let currentNormalized = null;
+    try {
+      currentNormalized = normalizeConfig(currentRaw);
+    } catch {
+      // The current profile row is invalid; a valid save is allowed to repair it.
+      currentNormalized = null;
+    }
+    if (currentNormalized !== null && !settingsChanged(currentNormalized, normalized)) {
+      return ok({ applied: false, unchanged: true });
+    }
+    if (roleIncludesHost(normalized)) {
+      if (this.hostServer !== null && this.hostServer.port === normalized.port) {
+        // The old listener still owns this port until the reload disposes it;
+        // verify the target address is local instead of binding a second one.
+        assertLocalBindAddress(normalized.bindHost);
+      } else {
+        await probeBind(normalized.bindHost, normalized.port);
+      }
+    }
+    this.log.info(
+      'settings save requested:',
+      normalized.role,
+      normalized.bindHost,
+      normalized.port,
+      normalized.label || '(hostname)',
+    );
+    await this.configEditor.edit(entry, (current) => buildSettingsConfig(current, normalized));
+    return ok({ applied: true, reloading: true });
+  }
+
+  async resetSettingsAction() {
+    if (this.remoteState.active) {
+      return fail(ERR.REMOTE_ACTIVE, '正在连接远端；请先“切换回本机”再修改设置');
+    }
+    if (this.configEditor === null) {
+      return fail(ERR.UNSUPPORTED, '官方配置编辑器不可用；请用 cordis.patch.yml 配置后重启 Harness');
+    }
+    const entry = findSettingsEntry(this.configEditor.entries());
+    this.log.info('settings reset requested');
+    await this.configEditor.edit(entry, (_current, inherited) => inherited);
+    return ok({ applied: true, reloading: true });
+  }
+
+  async startHostAction() {
+    if (!roleIncludesHost(this.config)) {
+      return fail(ERR.NOT_CONFIGURED, '当前运行模式不含 Host；请先切换到 Host 或“两者”');
+    }
+    if (this.hostServer !== null) return ok(this.status().host);
+    if (this.hostStarting) return ok(this.status().host);
+    await this.startHostBridge();
+    if (this.hostServer === null) {
+      const error = this.hostState.error;
+      return fail(
+        typeof error?.code === 'string' ? error.code : ERR.NOT_CONFIGURED,
+        typeof error?.message === 'string' ? error.message : 'Host 桥未能启动',
+      );
+    }
+    return ok(this.status().host);
   }
 
   handleBridgeClose(error) {
@@ -608,5 +748,7 @@ export class PrivateRemoteController {
         // ignore
       }
     }
+    this.configEditor = null;
+    this.hostDeps = null;
   }
 }

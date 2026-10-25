@@ -13,7 +13,8 @@ const failures = [];
 async function walk(dir, predicate, base = dir) {
   const result = [];
   for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
-    if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'bundle') continue;
+    if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'bundle'
+      || entry.name === '.tmp' || entry.name === 'dist' || entry.name === 'test-output') continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) result.push(...await walk(full, predicate, base));
     else if (entry.isFile() && predicate(full)) result.push(full);
@@ -42,7 +43,7 @@ const sourceFiles = await walk(path.join(root, 'src'), () => true);
 const sourceText = new Map();
 for (const file of sourceFiles) {
   if (!/\.(?:js|mjs|json|yml|yaml|md|svg)$/.test(file)) continue;
-  sourceText.set(path.relative(root, file), await fs.readFile(file, 'utf8'));
+  sourceText.set(path.relative(root, file).split(path.sep).join('/'), await fs.readFile(file, 'utf8'));
 }
 
 for (const [name, text] of sourceText) {
@@ -76,8 +77,11 @@ const client = sourceText.get('src/client.js') ?? '';
 check(protocol.includes("CONTROL_CHANNEL = '/private-remote'"), 'Host control channel constant missing');
 check(client.includes("const CHANNEL = '/private-remote'"), 'Client control channel constant missing');
 check(client.includes("const PANEL_ID = 'private-remote'"), 'Client panel id missing');
+check(client.includes("settings.section"), 'Client settings section missing');
 check(protocol.includes("PLUGIN_VERSION = '0.1.0'"), 'Plugin version missing');
 check(protocol.includes("SUPPORTED_HARNESS = '0.2.1-rc.3'"), 'Supported Harness version missing');
+check(protocol.includes("CONFIG_SAVE_FAILED: 'host/config-save-failed'"), 'Host config save error code missing');
+check(protocol.includes("REMOTE_ACTIVE: 'host/remote-active'"), 'Host remote-active error code missing');
 
 const packageJson = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
 check(packageJson.type === 'module', 'root package must be ESM');

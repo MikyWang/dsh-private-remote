@@ -35,7 +35,7 @@ check(packageJson.exports?.['./icon'] === './icon.svg', 'icon export missing');
 check(typeof packageJson.engines?.dsh === 'string' && packageJson.engines.dsh.length > 0, 'engines.dsh missing');
 check(!packageJson.dependencies && !packageJson.devDependencies, 'bundle must have no runtime dependencies');
 
-for (const file of ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/zh.json', 'locale/en.json', 'host/controller.js', 'host/bridge-server.js', 'host/bridge-client.js', 'shared/secure-channel.js']) {
+for (const file of ['index.js', 'client.js', 'cordis.patch.yml', 'icon.svg', 'locale/zh.json', 'locale/en.json', 'host/controller.js', 'host/bridge-server.js', 'host/bridge-client.js', 'host/settings.js', 'shared/secure-channel.js']) {
   try {
     await fs.access(path.join(bundle, file));
   } catch {
@@ -67,6 +67,7 @@ check(typeof buildInfo.files === 'object' && buildInfo.files !== null, 'BUILD-IN
 
 const text = await fs.readFile(path.join(bundle, 'client.js'), 'utf8');
 check(text.includes('window.__ModuleLoader__.load'), 'client.js must use the official ModuleLoader');
+check(text.includes("settings.section"), 'client.js must register the official Settings section');
 check(!/\blocalStorage\s*(?:\.|\[)/.test(text), 'client.js must not access localStorage');
 check(!text.includes('dangerouslySetInnerHTML'), 'client.js must not use dangerouslySetInnerHTML');
 

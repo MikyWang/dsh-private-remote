@@ -29,7 +29,7 @@ static checks passed
 - 所有 `src/`、`scripts/`、`test/` 的 JS 语法；
 - `client.js` 必须是 ModuleLoader 经典脚本，不得出现 ESM import；
 - 禁止 `dangerouslySetInnerHTML`、`localStorage`、官方安装目录硬编码；
-- 协议/控制通道/面板 id/版本/角色/语言文件/入口检查；
+- 协议/控制通道/设置页 id/顶部状态/版本/角色/语言文件/入口检查；
 - 秘密模式扫描（`sk-*`、GitHub/AWS/Slack token、私钥块）；
 - 根 `package.json` 无运行时依赖、ESM；
 - 文档存在性检查（现在 6 篇文档均存在）。
@@ -163,23 +163,23 @@ PASS local two-instance integration (token and cookie redacted)
 
 安装：
 
-- `~/.dsh/profiles/desktop/package.json` 的 `dsh.profile.bundles` 包含
+- `%DSH_HOME%\profiles\desktop\package.json` 的 `dsh.profile.bundles` 包含
   `dsh-private-remote`，依赖是
-  `"dsh-private-remote": "link:/Users/wangqiyuan/Documents/git/dsh-private-remote/bundle"`；
+  `"dsh-private-remote": "link:C:/git/dsh-private-remote/bundle"`；
 - 安装动作通过官方插件管理器的 `install_bundle` 完成，没有修改官方安装目录或分叉客户端。
 
-用 Cordis Inspect 对运行中的官方 Desktop 查询 Slot（本机 live 页面），4 个 occupant
+用 Cordis Inspect 对运行中的官方 Desktop 查询 Slot（本机 live 页面），3 个 occupant
 均为 `active: true`：
 
 | Slot | occupant |
 | --- | --- |
-| `sidebar.panellist` | `private-remote`（order 20） |
-| `main` | key `private-remote` |
-| `shell.overlay` | `private-remote-status`（order 100） |
+| `conversation.header.leading` | `private-remote` 顶部状态胶囊（单槽位） |
+| `settings.section` | `private-remote`（order 30） |
 | `conversation.session.header.utilities` | `private-remote-workspace`（order 20） |
 
-这说明“安装到官方 Desktop + 中文 Remote 入口 + 面板/状态/会话标题挂载”已经在真实运行
-实例中生效。**人工视觉验收**（点开面板、连接、看卡片样式）仍建议由用户完成。
+侧栏入口、主面板和右下角悬浮胶囊已移除。这说明“安装到官方 Desktop + 顶部状态胶囊 +
+设置页 + 会话标题挂载”已经在真实运行实例中生效。**人工视觉验收**（顶部胶囊、设置页、
+连接、看卡片样式）仍建议由用户完成。
 
 ### 4.1 GitHub Release 资产安装验证
 
@@ -263,11 +263,137 @@ THIRD_PARTY_NOTICES。`verify` 检查元数据、导出、入口、无 node_modu
 
 ## 7. 结论与声明边界
 
-- **已实现并验证**：构建/静态检查/单元测试/本机双实例完整闭环/官方 Desktop 4 个挂载点。
+- **已实现并验证**：构建/静态检查/单元测试/本机双实例完整闭环/官方 Desktop 3 个挂载点
+  （顶部状态胶囊、`settings.section`、会话标题胶囊）/Settings 保存、恢复默认与远端
+  active 拒绝保存（Windows 复测见第 8 节）。
 - **已实现但待验证**：真实 Windows + macOS 双机、Tailscale/防火墙、人工视觉验收、
   计时提问分支、Windows 路径细节。
-- **尚未实现**：文件预览、远程终端、模型/插件设置、斜杠命令执行、多 Host 同时切换、
-  按设备吊销、审计日志、自动重放修改类请求。
+- **尚未实现**：文件预览、远程终端、除本插件设置外的模型/插件设置、斜杠命令执行、
+  多 Host 同时切换、按设备吊销、审计日志、自动重放修改类请求。
 
 本报告不把第 3 节的本机双实例称为“真实双机”，也不把第 4 节的挂载点称为“人工视觉
 验收完成”。
+
+## 8. Windows 复测（2026-10-25，Settings 设置页）
+
+环境：Windows 11 x64，官方 Desktop `0.2.1-rc.3`，Node `v24.16.0`（构建）/ `v24.21.0`
+（Desktop 运行时），pnpm `11.25.0`，本地 Ollama `deepseek-v4.1-flash:1017-cloud`。
+隔离 E2E 使用 `.tmp/e2e-home` / `.tmp/e2e-client-home`，端口 18080（Host web）、
+18081（Client web）、18082（Host 桥）、18083（Client 作为 Host 时的桥）。
+
+### 8.1 静态检查与单元测试
+
+```text
+npm run check
+checked syntax: 45 JS files
+static checks passed
+
+npm test
+tests 38
+pass 38
+fail 0
+```
+
+新增 `test/unit/settings.test.mjs` 覆盖：设置 entry 查找、配置合并保留未知字段、
+设置比较、私网/Tailscale/ULA 地址过滤与排序、`probeBind` 占用/空闲端口、
+`assertLocalBindAddress` 的本机接口校验。`config.test.mjs` 增加 client 模式保留
+bindHost、role=both 和非法地址。
+
+### 8.2 构建与产物
+
+```text
+npm run build
+built bundle/ (24 files, 0.1.0, protocol 1)
+
+npm run verify
+bundle verified: dsh-private-remote@0.1.0, 24 hashed files
+```
+
+`bundle/` 新增 `host/settings.js`；`verify` 增加 `settings.section` 和该文件的检查。
+
+### 8.3 本机双实例 E2E（PASS）
+
+```text
+- host bridge listening on 127.0.0.1:18082
+- client starts in local mode
+- settings editor writable; 6 local address suggestion(s)
+- public bind address rejected before the profile was written
+- occupied Host bridge port rejected before reload
+- settings saved without restart; role=both Host bridge listens on 127.0.0.1:18083
+- Host token removal and startHost recovery work
+- settings reset removed the profile override and stopped the Host bridge
+- wrong pairing token rejected; mode stays local
+- control channel rejects an unauthenticated browser
+- paired with E2E Host (win32, version unknown)
+- remote mode active in the local Host switch
+- settings write blocked while remote is active; remote mode unchanged
+- non-allowlisted endpoint denied through the switch
+- remote workspace baseline through local mux: 1 workspace(s)
+- remote session list through local /api: 3 entries; target found
+- remote session page through local /api: 28 records
+- new remote session created through the switch: session-...
+- $events stream through local mux forwarded to the remote Host
+- session/follow stream through local mux forwarded to the remote Host
+- prompt accepted; assistant streaming frames delivered through the switched mux
+- remote assistant reply through local /api: "REMOTE-OK-..."
+- remote cancel confirmed by the Host: turn ended as aborted; task stopped, not misreported
+- new remote session created through the switch: session-...
+- remote approval/request delivered through the switched mux (pwsh)
+- approval answered through the switch; the Host executed the approved tool call
+- new remote session created through the switch: session-...
+- remote user-questions/request delivered through the switched mux (q1)
+- blocking question answered through $events/result; the Host tool call received the reply
+- disconnect keeps remote mode offline; no local fallback
+- explicit local mode restored local /api (0 local sessions)
+PASS local two-instance integration (token and cookie redacted)
+```
+
+补充说明：
+
+- 本机 44620-48715 端口段被 WSL2 保留，不是进程占用：`.wslconfig` 使用
+  `networkingMode=mirrored`，WSL Ubuntu-22.04 的 `net.ipv4.ip_local_port_range` 正好是
+  `44620 48715`。plain Node 在 44620/45000/47821/48715 上 `listen` 都返回
+  `EADDRINUSE`，而 44619/48716/18082/58080 可以绑定；`Get-NetTCPConnection`、
+  `netstat -ano` 都看不到 47821 的监听者，TCP connect 也失败。非 exclusive 的 .NET
+  TcpListener 返回 WSAEACCES（`access permissions`），与 Windows 端口保留一致。因此
+  E2E 改用 18xxx；默认 47821 在这台 Windows 上不可用，Host 端口用 18082。
+- 审批测试在 Windows 上使用 `pwsh` 工具，而不是 macOS 的 `bash`；测试已按平台选择。
+- E2E 的隔离 Host/Client 都禁用 HMR（`test/e2e/host-patch.yml` /
+  `test/e2e/client-patch.yml`），避免 Windows 上 profile `package.json` 写入触发
+  webserver 二次绑定；生产 profile 的 HMR 不受影响。
+- 测试脚本不打印启动 token、配对 token 或 cookie。
+
+### 8.4 真实 Desktop 设置页的 method 修复
+
+首次在真实官方 Desktop 打开 **设置 → 私人远程** 时，状态请求报
+“操作失败：方法与控制端点不一致”。根因不在设置页，而在控制路由的 envelope 校验：
+
+- 官方 `@deepseek-ai/dsh-client-connection` 的
+  `ctx.connection.rpc.call('/private-remote', 'status', ...)` 向
+  `/private-remote/status` POST，body 的 `method` 是**裸 endpoint `status`**；
+- 控制路由当时却要求 `method === 'private-remote/status'`；
+- 旧的 E2E `control()` helper 恰好也写了带前缀的 `private-remote/status`，所以自动化
+  没有覆盖真实客户端的格式。
+
+修复：
+
+- `src/host/control-route.js` 同时接受裸 `status` 和旧的 `private-remote/status`；
+- `test/e2e/local-two-instance.mjs` 的 helper 改成官方裸 `method`，后续 E2E 会覆盖
+  真实客户端的 envelope；
+- `docs/PROTOCOL.md` 的控制通道示例改为 `method: "<action>"`。
+
+修复后 `npm run check`、`npm test`（38）和完整 E2E（含设置页保存/重置、远端 active
+拒绝、审批/提问）再次通过。live Desktop 的 plugin row 已重新加载，`settings.section`
+仍为 active。
+
+### 8.5 真实双机与人工视觉
+
+仍未执行：本机没有第二台 Tailscale 机器。官方 Desktop 的 Settings 页注册、保存、
+Host 桥启停已经通过 live slot/控制通道检查；像素级样式和真实双机连接需要人工验收。
+
+本机 `desktop` profile 已安装为 `link:C:/git/dsh-private-remote/bundle`。安装后通过
+Cordis Inspect 查询 `settings.section`，occupant `private-remote`（order 30）为 active；
+`conversation.header.leading` 的顶部状态胶囊为 active，`conversation.session.header.utilities`
+的 `private-remote-workspace` 也保持 active。`sidebar.panellist`、`main` 和 `shell.overlay`
+的旧挂载已移除。Host 侧保存/重置由第 8.3 节 E2E 覆盖；官方 Desktop 页面里的实际点击和
+像素验收仍需人工完成。
