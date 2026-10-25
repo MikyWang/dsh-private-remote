@@ -11,9 +11,7 @@
 - id: private-remote
   config:
     role: host
-    bindHost: 127.0.0.1
-    port: !!js Number(process.env.DSH_E2E_REMOTE_PORT || 18082)
-    label: E2E Host
+    port: !!js Number(process.env.DSH_E2E_REMOTE_PORT || 18084)
 - id: agent-default-model
   name: "@deepseek-ai/dsh-agent-default-model"
   config:

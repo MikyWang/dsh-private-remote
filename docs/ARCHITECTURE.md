@@ -1,5 +1,9 @@
 # 架构
 
+> 当前版本为 **Tailscale-only、无配对令牌**：Host 自动绑定检测到的 Tailscale IPv4，
+> 设置页只有 role/port 和客户端 Host URL；安全边界是 Tailscale ACL。本文中出现的
+> 令牌、任意 bindHost、label 段落属于 0.1.0 早期设计历史。当前行为以 README 为准。
+
 ## 1. 目标与边界
 
 目标是在官方 Desktop 里继续操作另一台 Harness Host 的工作区和会话。实现原则：

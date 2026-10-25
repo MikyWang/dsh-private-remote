@@ -23,8 +23,9 @@ import { connect as openSocket } from './ws-client.mjs';
 
 const HOST_URL = process.env.DSH_HOST_URL ?? '';
 const CLIENT_URL = process.env.DSH_CLIENT_URL ?? '';
-const REMOTE_URL = process.env.DSH_REMOTE_URL ?? 'http://127.0.0.1:18082';
-const REMOTE_PORT = Number(new URL(REMOTE_URL).port || 18082);
+const REMOTE_URL = process.env.DSH_REMOTE_URL ?? 'http://100.68.241.8:18084';
+const REMOTE_PORT = Number(new URL(REMOTE_URL).port || 18084);
+const TAILSCALE_HOST = new URL(REMOTE_URL).hostname;
 const CLIENT_HOST_PORT = REMOTE_PORT + 1;
 const SHELL_TOOL = process.platform === 'win32' ? 'pwsh' : 'bash';
 const SHELL_COMMAND = process.platform === 'win32'
@@ -90,10 +91,7 @@ async function controlRetry(origin, cookie, action, payload = {}, attempts = 24)
 }
 
 function configMatches(config, expected) {
-  return config?.role === expected.role
-    && config?.bindHost === expected.bindHost
-    && Number(config?.port) === Number(expected.port)
-    && (config?.label ?? '') === (expected.label ?? '');
+  return config?.role === expected.role && Number(config?.port) === Number(expected.port);
 }
 
 async function waitForStatus(origin, cookie, predicate, timeoutMs, label) {
@@ -265,8 +263,7 @@ async function main() {
 
   const hostInfo = await control(hostSide.origin, hostSide.cookie, 'hostInfo');
   assert(hostInfo.ok === true, `hostInfo failed: ${hostInfo.error?.code}`);
-  const token = hostInfo.value.token;
-  assert(typeof token === 'string' && token.length >= 32, 'host token missing');
+  assert(hostInfo.value.listen.host === TAILSCALE_HOST, `Host bridge bound ${hostInfo.value.listen.host}, expected ${TAILSCALE_HOST}`);
   log(`host bridge listening on ${hostInfo.value.listen.host}:${hostInfo.value.listen.port}`);
 
   const localStatus = await control(clientSide.origin, clientSide.cookie, 'status');
@@ -291,28 +288,12 @@ async function main() {
     15000,
     'settings editor availability',
   );
-  assert(Array.isArray(settingsStatus.localAddresses) && settingsStatus.localAddresses.length > 0, 'settings status has no local addresses');
-  assert(
-    settingsStatus.localAddresses.some((entry) => entry.address === '127.0.0.1'),
-    'loopback is missing from the address suggestions',
-  );
-  log(`settings editor writable; ${settingsStatus.localAddresses.length} local address suggestion(s)`);
-
-  const invalidBind = await controlRetry(clientSide.origin, clientSide.cookie, 'saveSettings', {
-    role: 'both',
-    bindHost: '8.8.8.8',
-    port: CLIENT_HOST_PORT,
-    label: 'E2E client host',
-  });
-  assert(invalidBind.ok === false, 'a public bind address was accepted');
-  assert(invalidBind.error.code === 'host/config-invalid', `public bind produced ${invalidBind.error.code}`);
-  log('public bind address rejected before the profile was written');
+  assert(settingsStatus.tailscale === TAILSCALE_HOST, `settings status Tailscale is ${settingsStatus.tailscale}, expected ${TAILSCALE_HOST}`);
+  log(`settings editor writable; Tailscale host ${settingsStatus.tailscale}`);
 
   const occupiedPort = await controlRetry(clientSide.origin, clientSide.cookie, 'saveSettings', {
     role: 'both',
-    bindHost: '127.0.0.1',
     port: REMOTE_PORT,
-    label: 'E2E client host',
   });
   assert(occupiedPort.ok === false, 'the Host instance bridge port was accepted twice');
   assert(occupiedPort.error.code === 'host/bind-invalid', `occupied port produced ${occupiedPort.error.code}`);
@@ -320,9 +301,7 @@ async function main() {
 
   const saved = await controlRetry(clientSide.origin, clientSide.cookie, 'saveSettings', {
     role: 'both',
-    bindHost: '127.0.0.1',
     port: CLIENT_HOST_PORT,
-    label: 'E2E client host',
   });
   assert(saved.ok === true, `settings save failed: ${saved.error?.code}`);
   const savedStatus = await waitForStatus(
@@ -330,30 +309,26 @@ async function main() {
     clientSide.cookie,
     (value) => configMatches(value.config, {
       role: 'both',
-      bindHost: '127.0.0.1',
       port: CLIENT_HOST_PORT,
-      label: 'E2E client host',
     }) && value.host.listening === true,
     20000,
     'role=both Host bridge after settings save',
   );
-  assert(savedStatus.host.url === `http://127.0.0.1:${CLIENT_HOST_PORT}`, `unexpected Host URL ${savedStatus.host.url}`);
-  assert(savedStatus.host.info?.deviceName === 'E2E client host', 'settings label did not reach the Host identity');
-  log(`settings saved without restart; role=both Host bridge listens on 127.0.0.1:${CLIENT_HOST_PORT}`);
+  assert(savedStatus.host.url === `http://${TAILSCALE_HOST}:${CLIENT_HOST_PORT}`, `unexpected Host URL ${savedStatus.host.url}`);
+  assert(typeof savedStatus.host.info?.deviceName === 'string' && savedStatus.host.info.deviceName !== '', 'Host identity missing');
+  log(`settings saved without restart; role=both Host bridge listens on ${TAILSCALE_HOST}:${CLIENT_HOST_PORT}`);
 
   const clientHostInfo = await controlRetry(clientSide.origin, clientSide.cookie, 'hostInfo');
   assert(clientHostInfo.ok === true, `client hostInfo failed: ${clientHostInfo.error?.code}`);
-  const clientHostToken = clientHostInfo.value.token;
-  assert(typeof clientHostToken === 'string' && clientHostToken.length >= 32, 'client Host token missing');
 
-  const forgotten = await controlRetry(clientSide.origin, clientSide.cookie, 'forgetHostToken');
-  assert(forgotten.ok === true, `forgetHostToken failed: ${forgotten.error?.code}`);
+  const stopped = await controlRetry(clientSide.origin, clientSide.cookie, 'stopHost');
+  assert(stopped.ok === true, `stopHost failed: ${stopped.error?.code}`);
   await waitForStatus(
     clientSide.origin,
     clientSide.cookie,
     (value) => value.host.listening === false && value.host.stopped === true,
     15000,
-    'Host bridge stopped after token removal',
+    'Host bridge stopped after stopHost',
   );
   const restarted = await controlRetry(clientSide.origin, clientSide.cookie, 'startHost');
   assert(restarted.ok === true, `startHost failed: ${restarted.error?.code}`);
@@ -366,8 +341,7 @@ async function main() {
   );
   const restartedInfo = await controlRetry(clientSide.origin, clientSide.cookie, 'hostInfo');
   assert(restartedInfo.ok === true, `restarted hostInfo failed: ${restartedInfo.error?.code}`);
-  assert(restartedInfo.value.token !== clientHostToken, 'startHost did not generate a new pairing token');
-  log('Host token removal and startHost recovery work');
+  log('Host stopHost/startHost recovery works without a token');
 
   const reset = await controlRetry(clientSide.origin, clientSide.cookie, 'resetSettings');
   assert(reset.ok === true, `resetSettings failed: ${reset.error?.code}`);
@@ -381,16 +355,6 @@ async function main() {
   assert(resetStatus.config.role === 'client', `reset left role=${resetStatus.config.role}`);
   log('settings reset removed the profile override and stopped the Host bridge');
 
-  // Negative auth: a wrong token must fail at the handshake and must not leave
-  // the client in remote mode or grant any remote capability.
-  const wrongToken = `${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`;
-  const wrong = await control(clientSide.origin, clientSide.cookie, 'test', { url: REMOTE_URL, token: wrongToken });
-  assert(wrong.ok === false, 'a wrong pairing token was accepted');
-  assert(wrong.error.code === 'remote/auth-failed' || wrong.error.code === 'remote/offline', `wrong token produced ${wrong.error.code}`);
-  const stillLocal = await control(clientSide.origin, clientSide.cookie, 'status');
-  assert(stillLocal.value.mode === 'local', 'a failed pairing changed the client mode');
-  log('wrong pairing token rejected; mode stays local');
-
   // The control channel must reject a request without the official browser cookie.
   const unauth = await fetch(`${clientSide.origin}/private-remote/status`, {
     method: 'POST',
@@ -400,11 +364,11 @@ async function main() {
   assert(unauth.status === 401, `unauthenticated control request returned HTTP ${unauth.status}`);
   log('control channel rejects an unauthenticated browser');
 
-  const test = await control(clientSide.origin, clientSide.cookie, 'test', { url: REMOTE_URL, token });
+  const test = await control(clientSide.origin, clientSide.cookie, 'test', { url: REMOTE_URL });
   assert(test.ok === true, `test connection failed: ${test.error?.code}`);
   log(`paired with ${test.value.host.deviceName} (${test.value.host.platform}, ${test.value.host.harnessVersion || 'version unknown'})`);
 
-  const connect = await control(clientSide.origin, clientSide.cookie, 'connect', { url: REMOTE_URL, token, label: 'E2E remote' });
+  const connect = await control(clientSide.origin, clientSide.cookie, 'connect', { url: REMOTE_URL });
   assert(connect.ok === true, `connect failed: ${connect.error?.code}`);
   const remoteStatus = await control(clientSide.origin, clientSide.cookie, 'status');
   assert(remoteStatus.value.mode === 'remote', `expected remote mode, got ${remoteStatus.value.mode}`);
@@ -416,9 +380,7 @@ async function main() {
   // sessions after the switch was silently uninstalled.
   const blockedSave = await controlRetry(clientSide.origin, clientSide.cookie, 'saveSettings', {
     role: 'both',
-    bindHost: '127.0.0.1',
     port: CLIENT_HOST_PORT,
-    label: 'E2E blocked while remote',
   });
   assert(blockedSave.ok === false, 'settings were written while a remote connection was active');
   assert(blockedSave.error.code === 'host/remote-active', `active remote save produced ${blockedSave.error.code}`);

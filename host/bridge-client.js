@@ -149,7 +149,7 @@ export class BridgeClient {
     const parsed = validateRemoteUrl(options.url);
     this.url = parsed.url;
     this.token = typeof options.token === 'string' ? options.token.trim() : '';
-    if (this.token === '') throw new BridgeError(ERR.TOKEN_MISSING, '请输入配对令牌');
+    if (this.token === '') throw new BridgeError(ERR.AUTH_FAILED, '传输协议密钥缺失');
     this.clientName = clampText(options.clientName ?? '', LIMITS.maxClientName) || 'DSH Desktop';
     this.clientHarnessVersion = clampText(options.clientHarnessVersion ?? '', LIMITS.maxVersionText);
     this.pluginVersion = clampText(options.pluginVersion ?? '', LIMITS.maxVersionText);
@@ -407,10 +407,7 @@ export class BridgeClient {
         break;
       }
       case FRAME.BYE: {
-        this.failConnection(new BridgeError(
-          typeof payload?.reason === 'string' && payload.reason === 'token-rotated' ? ERR.AUTH_ROTATED : ERR.OFFLINE,
-          '远端已关闭连接',
-        ));
+        this.failConnection(new BridgeError(ERR.OFFLINE, '远端已关闭连接'));
         break;
       }
       default:

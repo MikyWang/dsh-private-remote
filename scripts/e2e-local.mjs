@@ -20,6 +20,7 @@ import fsSync from 'node:fs';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { findTailscaleAddress } from '../src/host/config.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = process.env.DSH_CLI ?? '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh';
@@ -27,7 +28,9 @@ const HOST_HOME = path.resolve(process.env.DSH_E2E_HOST_HOME ?? path.join(root, 
 const CLIENT_HOME = path.resolve(process.env.DSH_E2E_CLIENT_HOME ?? path.join(root, '.tmp', 'e2e-client-home'));
 const HOST_PORT = Number(process.env.DSH_E2E_HOST_PORT ?? 18080);
 const CLIENT_PORT = Number(process.env.DSH_E2E_CLIENT_PORT ?? 18081);
-const REMOTE_PORT = Number(process.env.DSH_E2E_REMOTE_PORT ?? 18082);
+const REMOTE_PORT = Number(process.env.DSH_E2E_REMOTE_PORT ?? 18084);
+const TAILSCALE_HOST = findTailscaleAddress();
+const REMOTE_URL = TAILSCALE_HOST === null ? '' : `http://${TAILSCALE_HOST}:${REMOTE_PORT}`;
 const BUNDLE = path.join(root, 'bundle');
 const HOST_PATCH = path.join(root, 'test', 'e2e', 'host-patch.yml');
 const CLIENT_PATCH = path.join(root, 'test', 'e2e', 'client-patch.yml');
@@ -254,7 +257,7 @@ async function runTest(hostUrl, clientUrl, sessionId) {
     ...process.env,
     DSH_HOST_URL: hostUrl,
     DSH_CLIENT_URL: clientUrl,
-    DSH_REMOTE_URL: `http://127.0.0.1:${REMOTE_PORT}`,
+    DSH_REMOTE_URL: REMOTE_URL,
     DSH_E2E_SESSION_ID: sessionId,
     DSH_E2E_CWD: DEMO,
   };
@@ -306,6 +309,7 @@ async function cleanup(host, client) {
 }
 
 async function main() {
+  if (TAILSCALE_HOST === null) fail('E2E requires a Tailscale IPv4 (100.64.0.0/10); start and sign in to Tailscale');
   if (!(await exists(path.join(BUNDLE, 'package.json')))) fail('bundle/ is missing; run node scripts/build.mjs first');
   if (!(await exists(CLI))) fail(`dsh CLI not found at ${CLI}; set DSH_CLI`);
   log(`preparing isolated profiles in ${HOST_HOME} and ${CLIENT_HOME}`);
@@ -322,7 +326,7 @@ async function main() {
   await fs.mkdir(seededConfigDir, { recursive: true, mode: 0o700 });
   await fs.writeFile(
     path.join(seededConfigDir, 'client.json'),
-    `${JSON.stringify({ url: `http://127.0.0.1:${REMOTE_PORT}`, label: 'E2E persisted' }, null, 2)}\n`,
+    `${JSON.stringify({ url: REMOTE_URL }, null, 2)}\n`,
     { mode: 0o600 },
   );
 

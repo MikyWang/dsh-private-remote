@@ -22,9 +22,9 @@ window.__ModuleLoader__.load({
       statusUnavailable: '状态不可用',
       loading: '正在读取状态…',
       clientTitle: '连接到远端 Host',
-      clientHint: '远端工作区、会话历史、模型和工具都留在远端 Host。这里的令牌只存在本机内存中，不写入磁盘或 localStorage。',
-      urlLabel: '远端地址',
-      urlPlaceholder: 'http://100.68.241.8:47821',
+      clientHint: '只填 Host 的 Tailscale 地址。没有配对令牌；连接成功即以 Host owner 身份操作远端。请用 Tailscale ACL 限制能访问该端口的设备。',
+      urlLabel: 'Host 地址（Tailscale）',
+      urlPlaceholder: 'http://100.x.y.z:18082',
       tokenLabel: '配对令牌',
       tokenPlaceholder: '从 Host 的 设置 → 私人远程 复制',
       labelLabel: '显示标签（可选）',
@@ -44,8 +44,8 @@ window.__ModuleLoader__.load({
       reconnect: '重新连接',
       reconnectHint: '连接断开后，提交会被拒绝，不会回退到本地执行。Host 上的任务可能仍在运行；重新连接后请核对历史。',
       hostTitle: 'Host 模式',
-      hostHint: '绑定私网或 Tailscale IP，然后在另一台电脑的“设置 → 私人远程 → 客户端设置”填入这里的地址和令牌。令牌是机密，不要截图或发到聊天里。',
-      listenAddress: '监听地址',
+      hostHint: 'Host 自动监听本机的 Tailscale IPv4，不需要令牌。任何能访问这个 Tailscale 地址的设备都被视为 owner，请用 Tailscale ACL 限制。',
+      listenAddress: 'Tailscale 监听地址',
       deviceName: '设备名称',
       version: '版本',
       platform: '平台',
@@ -79,7 +79,8 @@ window.__ModuleLoader__.load({
       errorGeneric: '操作失败',
       errorForbidden: '请求被拒绝',
       errorBusy: 'Host 忙',
-      errorBind: '绑定地址无效',
+      errorBind: '端口无效或被占用',
+      errorTailscaleMissing: '未检测到 Tailscale',
       errorNotConfigured: '未配置',
       errorProtocol: '协议错误',
       errorClientDisabled: '当前运行模式不含客户端',
@@ -99,12 +100,13 @@ window.__ModuleLoader__.load({
       roleHost: 'Host',
       roleBoth: '两者',
       roleClientHint: '连接另一台电脑上的 Host，使用它的工作区和会话。',
-      roleHostHint: '在本机监听私网地址，供另一台电脑连接。',
+      roleHostHint: '在本机 Tailscale 地址上监听，供另一台电脑连接。',
       roleBothHint: '同时提供 Host 并连接远端 Host。',
       roleWarning: '保存会重载插件；正在连接远端时请先“切换回本机”。有 Host 客户端连接时也会断开。',
       hostSettingsTitle: 'Host 设置',
-      hostSettingsHint: '监听地址必须是本机回环、RFC1918、Tailscale 100.64/10 或 IPv6 私网地址；不能绑定 0.0.0.0。',
-      bindHostLabel: '监听地址',
+      hostSettingsHint: 'Host 只监听检测到的 Tailscale IPv4 (100.64.0.0/10)；端口默认 18082。没有令牌，Tailscale ACL 是权限边界。',
+      tailscaleMissing: '未检测到 Tailscale IPv4；请先启动并登录 Tailscale。',
+      stopHost: '停止 Host 桥',
       bindHostPlaceholder: '100.x.y.z 或 127.0.0.1',
       portLabel: '端口',
       deviceNameLabel: '本机设备名称（可选）',
@@ -128,14 +130,14 @@ window.__ModuleLoader__.load({
       startHost: '启动 Host 桥',
       startingHost: '正在启动…',
       hostStopped: 'Host 桥已停止',
-      hostStoppedHint: '点击“启动 Host 桥”重新监听；配对令牌仍保留。',
+      hostStoppedHint: '点击“启动 Host 桥”重新监听。',
       hostTokenForgotten: 'Host 令牌已删除；启动 Host 桥会生成新令牌。',
       hostModeDisabled: '当前运行模式不含 Host；选择“Host”或“两者”后保存。',
       clientModeDisabled: '当前运行模式不含客户端；选择“客户端”或“两者”后保存。',
       clientSettingsTitle: '客户端设置',
-      clientSettingsHint: '连接另一台电脑上的 Host。配对令牌只保存在内存中，不写入磁盘或 localStorage。',
+      clientSettingsHint: '填另一台电脑的 Tailscale Host 地址；没有配对令牌。连接成功即视为该 Host 的 owner。',
       clientSectionHint: 'Host / Client 设置只作用于当前这台电脑。',
-      remoteUrlHint: '只支持私网 http:// 或公网 https://；不能包含路径、查询参数或凭据。',
+      remoteUrlHint: '只支持 Tailscale 地址（100.64.0.0/10 或 *.ts.net）的 http://；可不写端口，默认 18082。',
       settingsUndo: '撤销修改',
       settingsReset: '恢复默认',
       settingsResetConfirm: '恢复 bundle 默认配置（通常是客户端模式），会删除当前 profile 的覆盖并重载插件。继续？',
@@ -165,9 +167,9 @@ window.__ModuleLoader__.load({
       statusUnavailable: 'Status unavailable',
       loading: 'Reading status…',
       clientTitle: 'Connect to a remote Host',
-      clientHint: 'Remote workspaces, session history, models and tools stay on the remote Host. The token is kept in this Host process memory only; it is never written to disk or browser storage.',
-      urlLabel: 'Remote URL',
-      urlPlaceholder: 'http://100.68.241.8:47821',
+      clientHint: 'Enter the Host’s Tailscale address only. There is no pairing token; a successful connection acts as the Host owner. Restrict access to this port with Tailscale ACLs.',
+      urlLabel: 'Host address (Tailscale)',
+      urlPlaceholder: 'http://100.x.y.z:18082',
       tokenLabel: 'Pairing token',
       tokenPlaceholder: 'Copy it from the Host’s Settings → Private Remote',
       labelLabel: 'Display label (optional)',
@@ -187,8 +189,8 @@ window.__ModuleLoader__.load({
       reconnect: 'Reconnect',
       reconnectHint: 'After a disconnect, submissions are refused and never fall back to local execution. Host tasks may still be running; verify the history after reconnecting.',
       hostTitle: 'Host mode',
-      hostHint: 'Bind a private or Tailscale IP, then enter this address and token in the other computer’s Settings → Private Remote → Client settings. The token is a secret; do not screenshot or paste it into chat.',
-      listenAddress: 'Listen address',
+      hostHint: 'The Host listens on this machine’s Tailscale IPv4 automatically, with no token. Any device that can reach that Tailscale address is treated as owner; restrict it with Tailscale ACLs.',
+      listenAddress: 'Tailscale listen address',
       deviceName: 'Device name',
       version: 'Version',
       platform: 'Platform',
@@ -222,7 +224,8 @@ window.__ModuleLoader__.load({
       errorGeneric: 'Operation failed',
       errorForbidden: 'Request rejected',
       errorBusy: 'Host busy',
-      errorBind: 'Invalid bind address',
+      errorBind: 'Port unavailable',
+      errorTailscaleMissing: 'Tailscale not detected',
       errorNotConfigured: 'Not configured',
       errorProtocol: 'Protocol error',
       errorClientDisabled: 'The current mode does not include the client',
@@ -242,12 +245,13 @@ window.__ModuleLoader__.load({
       roleHost: 'Host',
       roleBoth: 'Both',
       roleClientHint: 'Connect to a Host on another computer and use its workspaces and sessions.',
-      roleHostHint: 'Listen on a private address so another computer can connect.',
+      roleHostHint: 'Listen on this machine’s Tailscale address for another computer.',
       roleBothHint: 'Serve a Host and connect to a remote Host at the same time.',
       roleWarning: 'Saving reloads the plugin; switch back to local first if a remote connection is active. Connected Host clients are disconnected too.',
       hostSettingsTitle: 'Host settings',
-      hostSettingsHint: 'The listen address must be loopback, RFC1918, Tailscale 100.64/10, or a private IPv6 address; 0.0.0.0 is not allowed.',
-      bindHostLabel: 'Listen address',
+      hostSettingsHint: 'The Host only binds the detected Tailscale IPv4 (100.64.0.0/10); the default port is 18082. There is no token; Tailscale ACLs are the permission boundary.',
+      tailscaleMissing: 'No Tailscale IPv4 detected; start and sign in to Tailscale first.',
+      stopHost: 'Stop Host bridge',
       bindHostPlaceholder: '100.x.y.z or 127.0.0.1',
       portLabel: 'Port',
       deviceNameLabel: 'Device name (optional)',
@@ -271,14 +275,14 @@ window.__ModuleLoader__.load({
       startHost: 'Start Host bridge',
       startingHost: 'Starting…',
       hostStopped: 'Host bridge stopped',
-      hostStoppedHint: 'Select “Start Host bridge” to listen again; the pairing token is kept.',
+      hostStoppedHint: 'Select “Start Host bridge” to listen again.',
       hostTokenForgotten: 'The Host token was removed; starting the Host bridge creates a new token.',
       hostModeDisabled: 'The current mode does not include Host; select “Host” or “Both” and save.',
       clientModeDisabled: 'The current mode does not include the client; select “Client” or “Both” and save.',
       clientSettingsTitle: 'Client settings',
-      clientSettingsHint: 'Connect to a Host on another computer. The pairing token stays in memory; it is never written to disk or browser storage.',
+      clientSettingsHint: 'Enter the Tailscale Host address of the other computer; there is no pairing token. A successful connection acts as that Host’s owner.',
       clientSectionHint: 'Host / client settings apply to this computer only.',
-      remoteUrlHint: 'Private http:// or public https:// only; no path, query, or credentials.',
+      remoteUrlHint: 'Tailscale addresses only (100.64.0.0/10 or *.ts.net) over http://; the port defaults to 18082.',
       settingsUndo: 'Undo changes',
       settingsReset: 'Restore defaults',
       settingsResetConfirm: 'Restore the bundle defaults (usually client mode), remove this profile’s override, and reload the plugin. Continue?',
@@ -300,11 +304,10 @@ window.__ModuleLoader__.load({
       'remote/offline': 'errorOffline',
       'remote/outcome-unknown': 'errorOutcomeUnknown',
       'remote/auth-failed': 'errorAuth',
-      'remote/auth-rotated': 'errorAuth',
       'remote/version-mismatch': 'errorVersion',
       'remote/endpoint-denied': 'errorDenied',
       'remote/forbidden': 'errorForbidden',
-      'host/token-missing': 'errorTokenMissing',
+      'host/tailscale-missing': 'errorTailscaleMissing',
       'host/busy': 'errorBusy',
       'host/bind-invalid': 'errorBind',
       'host/config-invalid': 'errorConfigInvalid',
@@ -324,20 +327,20 @@ window.__ModuleLoader__.load({
       zh: {
         'remote/offline': '远端已断开，提交被拒绝；请重新连接。',
         'remote/outcome-unknown': '远端请求结果未知；请核对远端会话后再重试。',
-        'remote/auth-failed': '配对令牌不匹配，或 Host 不可信。',
+        'remote/auth-failed': '传输协议不匹配，或 Host 不可信。',
         'remote/version-mismatch': '本机与远端 Harness/插件版本不兼容。',
         'remote/endpoint-denied': '该操作不在私人远程的允许列表内。',
-        'host/token-missing': '本机内存中没有配对令牌，请重新输入。',
-        'host/bind-invalid': '监听地址必须是私网或 Tailscale IP。',
+        'host/tailscale-missing': '未检测到 Tailscale IPv4；请先连接 Tailscale。',
+        'host/bind-invalid': '端口不可用；请换一个空闲端口。',
       },
       en: {
         'remote/offline': 'The remote is offline; submissions are refused. Reconnect first.',
         'remote/outcome-unknown': 'The remote outcome is unknown. Verify the remote session before retrying.',
-        'remote/auth-failed': 'The pairing token does not match, or the Host is not trusted.',
+        'remote/auth-failed': 'The transport protocol does not match, or the Host is not trusted.',
         'remote/version-mismatch': 'Local and remote Harness/plugin versions are incompatible.',
         'remote/endpoint-denied': 'That operation is not on the Private Remote allowlist.',
-        'host/token-missing': 'No pairing token is held in memory. Enter it again.',
-        'host/bind-invalid': 'The listen address must be a private or Tailscale IP.',
+        'host/tailscale-missing': 'No Tailscale IPv4 detected; connect to Tailscale first.',
+        'host/bind-invalid': 'The port is unavailable; choose a free port.',
       },
     };
 
@@ -965,8 +968,6 @@ window.__ModuleLoader__.load({
     function ClientForm(props) {
       const { controller, t, initial, bare } = props;
       const [url, setUrl] = React.useState(typeof initial.url === 'string' ? initial.url : '');
-      const [label, setLabel] = React.useState(typeof initial.label === 'string' ? initial.label : '');
-      const [token, setToken] = React.useState('');
       const [busy, setBusy] = React.useState(false);
       const [error, setError] = React.useState(null);
       const [notice, setNotice] = React.useState('');
@@ -979,7 +980,7 @@ window.__ModuleLoader__.load({
         setNotice('');
         setTestedHost(null);
         try {
-          const result = await controller.act(endpoint, { url, token, label });
+          const result = await controller.act(endpoint, { url });
           if (!result.ok) {
             setError(result.error);
             return;
@@ -1011,21 +1012,6 @@ window.__ModuleLoader__.load({
           placeholder: t('urlPlaceholder'),
           hint: t('remoteUrlHint'),
           onChange: (event) => setUrl(event.target.value),
-        }),
-        h(Field, {
-          key: 'token',
-          label: t('tokenLabel'),
-          value: token,
-          placeholder: t('tokenPlaceholder'),
-          type: 'password',
-          onChange: (event) => setToken(event.target.value),
-        }),
-        h(Field, {
-          key: 'label',
-          label: t('labelLabel'),
-          value: label,
-          placeholder: t('labelPlaceholder'),
-          onChange: (event) => setLabel(event.target.value),
         }),
         h('div', { key: 'actions', style: styles.row },
           h(Button, {
@@ -1068,7 +1054,7 @@ window.__ModuleLoader__.load({
       const remote = status.remote;
       const host = remote.host;
       const online = remote.connected;
-      const remoteName = host ? hostName(host, t) : (remote.label || remote.url || t('remote'));
+      const remoteName = host ? hostName(host, t) : (remote.url || t('remote'));
 
       const actAndReload = async (endpoint) => {
         if (busy) return;
@@ -1165,8 +1151,6 @@ window.__ModuleLoader__.load({
 
     function HostView(props) {
       const { controller, t, status, compact } = props;
-      const [token, setToken] = React.useState('');
-      const [show, setShow] = React.useState(false);
       const [busy, setBusy] = React.useState(false);
       const [error, setError] = React.useState(null);
       const [notice, setNotice] = React.useState('');
@@ -1213,45 +1197,29 @@ window.__ModuleLoader__.load({
         }
       };
 
-      const reveal = async () => {
-        const value = await run('hostInfo');
-        if (value && typeof value.token === 'string') {
-          setToken(value.token);
-          setShow(true);
-          setNotice('');
-        }
-      };
-
-      const copy = async () => {
-        if (token === '') return;
+      const stopHost = async () => {
+        if (busy) return;
+        setBusy(true);
+        setError(null);
+        setNotice('');
         try {
-          await navigator.clipboard.writeText(token);
-          setNotice(t('copied'));
-        } catch {
-          setError({ code: 'remote/unsupported', message: '剪贴板不可用；请显示令牌后手动选择复制。' });
-        }
-      };
-
-      const rotate = async () => {
-        if (!window.confirm(t('rotateConfirm'))) return;
-        const value = await run('rotateToken');
-        if (value && typeof value.token === 'string') {
-          setToken(value.token);
-          setShow(true);
-          setNotice(t('rotate'));
+          const result = await controller.act('stopHost', {});
+          if (!result.ok) {
+            setError(result.error);
+            return;
+          }
+          setNotice(t('hostStopped'));
+          await controller.refresh();
+        } catch (cause) {
+          setError(toErrorPayload(cause));
+        } finally {
+          setBusy(false);
         }
       };
 
       const drop = async () => {
         if (!window.confirm(t('dropConfirm'))) return;
         await run('dropClients');
-      };
-
-      const forget = async () => {
-        if (!window.confirm(t('forgetConfirm'))) return;
-        await run('forgetHostToken');
-        setToken('');
-        setShow(false);
       };
 
       const statusLine = host.listening
@@ -1285,9 +1253,6 @@ window.__ModuleLoader__.load({
               )
             : h('div', null,
                 h('p', { style: styles.hint }, host.starting ? t('loading') : statusLine),
-                host.stopped && host.error?.code === 'host/token-missing'
-                  ? h('p', { style: styles.settingsNote }, t('hostTokenForgotten'))
-                  : null,
                 host.enabled && !host.starting
                   ? h('div', { style: styles.settingsActions },
                       h(Button, { variant: 'primary', disabled: busy, onClick: () => void startHost() },
@@ -1295,35 +1260,17 @@ window.__ModuleLoader__.load({
                     )
                   : null,
               ),
+          host.listening
+            ? h('div', { style: styles.row },
+                h(Button, { variant: 'danger', disabled: busy, onClick: () => void stopHost() }, t('stopHost')),
+                h(Button, { variant: 'danger', disabled: busy, onClick: () => void drop() }, t('dropClients')),
+              )
+            : null,
+          h(Notice, {}, notice),
+          h(Notice, { error: true }, error ? describeError(error, t) : ''),
           host.error && !host.listening ? h(Notice, { error: true }, `${t('hostError')}：${host.error.code} ${host.error.message}`) : null,
           compact ? null : h('p', { style: styles.settingsNote }, t('settingsHint')),
         ),
-        host.listening ? h('div', { style: styles.card },
-          h('h3', { style: styles.cardTitle }, t('hostToken')),
-          h('p', { style: styles.hint }, t('hostHint')),
-          h('div', { style: styles.field },
-            h('span', { style: styles.label }, t('hostToken')),
-            h('input', {
-              style: styles.input,
-              type: show ? 'text' : 'password',
-              readOnly: true,
-              autoComplete: 'off',
-              spellCheck: false,
-              value: token,
-              placeholder: show ? '' : '••••••••••••',
-            }),
-          ),
-          h('div', { style: styles.row },
-            h(Button, { disabled: busy, onClick: () => void reveal() }, t('showToken')),
-            h(Button, { disabled: busy || token === '', onClick: () => void copy() }, t('copy')),
-            h(Button, { disabled: busy || token === '', onClick: () => setShow((value) => !value) }, show ? t('hideToken') : t('showToken')),
-            h(Button, { variant: 'danger', disabled: busy, onClick: () => void rotate() }, t('rotate')),
-            h(Button, { variant: 'danger', disabled: busy, onClick: () => void drop() }, t('dropClients')),
-            h(Button, { variant: 'danger', disabled: busy, onClick: () => void forget() }, t('forgetToken')),
-          ),
-          h(Notice, {}, notice),
-          h(Notice, { error: true }, error ? describeError(error, t) : ''),
-        ) : null,
         host.listening ? h('div', { style: styles.card },
           h('h3', { style: styles.cardTitle }, `${t('clients')} (${host.clients.length})`),
           host.clients.length === 0
@@ -1385,11 +1332,9 @@ window.__ModuleLoader__.load({
     function RoleHostForm(props) {
       const { controller, t, status } = props;
       const config = status.config;
-      const configKey = `${config.role}|${config.bindHost}|${config.port}|${config.label}`;
+      const configKey = `${config.role}|${config.port}`;
       const [role, setRole] = React.useState(config.role);
-      const [bindHost, setBindHost] = React.useState(config.bindHost);
       const [port, setPort] = React.useState(String(config.port));
-      const [label, setLabel] = React.useState(config.label);
       const [busy, setBusy] = React.useState(false);
       const [pending, setPending] = React.useState(null);
       const [error, setError] = React.useState(null);
@@ -1399,21 +1344,15 @@ window.__ModuleLoader__.load({
 
       const writable = status.settingsWritable === true;
       const remoteActive = status.remote.active === true;
-      const addresses = Array.isArray(status.localAddresses) ? status.localAddresses : [];
-      const dirty = role !== config.role
-        || bindHost !== config.bindHost
-        || Number(port) !== Number(config.port)
-        || label !== config.label;
+      const dirty = role !== config.role || Number(port) !== Number(config.port);
 
       React.useEffect(() => {
         if (busy || pending !== null) return;
         if (lastConfigKey.current === configKey) return;
         lastConfigKey.current = configKey;
         setRole(config.role);
-        setBindHost(config.bindHost);
         setPort(String(config.port));
-        setLabel(config.label);
-      }, [configKey, busy, pending, config.role, config.bindHost, config.port, config.label]);
+      }, [configKey, busy, pending, config.role, config.port]);
 
       React.useEffect(() => {
         if (pending === null) return;
@@ -1440,16 +1379,15 @@ window.__ModuleLoader__.load({
         if (busy) return;
         const next = {
           role,
-          bindHost: bindHost.trim(),
           port: Number(port),
-          label: label.trim().slice(0, 80),
         };
-        if (next.bindHost === '') {
-          setFieldError(`${t('bindHostLabel')}：${t('settingsFieldInvalid')}`);
-          return;
-        }
         if (!Number.isInteger(next.port) || next.port < 1 || next.port > 65535) {
           setFieldError(`${t('portLabel')}：${t('settingsFieldInvalid')}`);
+          return;
+        }
+        const wantsHost = next.role === 'host' || next.role === 'both';
+        if (wantsHost && !status.tailscale) {
+          setFieldError(t('tailscaleMissing'));
           return;
         }
         if (!writable) {
@@ -1477,10 +1415,10 @@ window.__ModuleLoader__.load({
             setBusy(false);
             return;
           }
-          setPending({ key: `${next.role}|${next.bindHost}|${next.port}|${next.label}` });
+          setPending({ key: `${next.role}|${next.port}` });
           window.setTimeout(() => { void controller.refresh(); }, 300);
         } catch {
-          setPending({ key: `${next.role}|${next.bindHost}|${next.port}|${next.label}` });
+          setPending({ key: `${next.role}|${next.port}` });
           setNotice(t('settingsMaybeSaved'));
           window.setTimeout(() => { void controller.refresh(); }, 300);
         }
@@ -1521,9 +1459,7 @@ window.__ModuleLoader__.load({
       const undo = () => {
         if (busy) return;
         setRole(config.role);
-        setBindHost(config.bindHost);
         setPort(String(config.port));
-        setLabel(config.label);
         setError(null);
         setNotice('');
         setFieldError('');
@@ -1567,27 +1503,12 @@ window.__ModuleLoader__.load({
           h('p', { style: styles.settingsNote }, t('roleWarning')),
           h('div', { style: styles.settingsDivider }),
           h('h3', { style: styles.settingsCardTitle }, t('hostSettingsTitle')),
-          h(Field, {
-            label: t('bindHostLabel'),
-            value: bindHost,
-            placeholder: t('bindHostPlaceholder'),
-            hint: t('hostSettingsHint'),
-            disabled: !writable,
-            onChange: (event) => setBindHost(event.target.value),
-          }),
+          h('p', { style: styles.hint }, t('hostSettingsHint')),
           h('div', { style: styles.field },
-            h('span', { style: styles.label }, t('detectedAddresses')),
-            addresses.length === 0
-              ? h('span', { style: styles.settingsNote }, t('noDetectedAddresses'))
-              : h('div', { style: styles.settingsBadgeRow },
-                  addresses.map((entry) => h('button', {
-                    key: entry.address,
-                    type: 'button',
-                    style: entry.address === bindHost ? styles.addressChipActive : styles.addressChip,
-                    title: entry.interfaceName,
-                    onClick: () => setBindHost(entry.address),
-                  }, `${entry.address} · ${addressKindLabel(entry.kind, t)}`)),
-                ),
+            h('span', { style: styles.label }, t('listenAddress')),
+            h('span', { style: styles.mono }, status.tailscale
+              ? `http://${status.tailscale}:${port}`
+              : t('tailscaleMissing')),
           ),
           h('div', { style: styles.settingsGrid },
             h(Field, {
@@ -1599,14 +1520,6 @@ window.__ModuleLoader__.load({
               inputMode: 'numeric',
               disabled: !writable,
               onChange: (event) => setPort(event.target.value),
-            }),
-            h(Field, {
-              label: t('deviceNameLabel'),
-              value: label,
-              placeholder: t('deviceNamePlaceholder'),
-              hint: t('deviceNameHint'),
-              disabled: !writable,
-              onChange: (event) => setLabel(event.target.value),
             }),
           ),
           fieldError ? h(Notice, { error: true }, fieldError) : null,
@@ -1785,7 +1698,7 @@ window.__ModuleLoader__.load({
       const hostEnabled = roleIncludesHost(role);
       const remoteName = remote?.host
         ? hostName(remote.host, t)
-        : (remote?.label || remote?.url || t('remote'));
+        : (remote?.url || t('remote'));
       const remoteDetail = remote?.installed
         ? (remote.active
             ? `${t('remote')}：${remoteName}${remote.url ? ` (${remote.url})` : ''}`
@@ -1840,7 +1753,7 @@ window.__ModuleLoader__.load({
         return {
           label: `${t('remote')} · ${t('disconnected')}`,
           kind: 'idle',
-          title: `${status.clientConfig.url}\n${t('tokenLabel')}`,
+          title: status.clientConfig.url,
         };
       }
       return null;

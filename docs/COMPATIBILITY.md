@@ -1,5 +1,9 @@
 # 兼容性
 
+> 当前版本为 **Tailscale-only、无配对令牌**。设置页只保存 role/port；Host 自动绑定
+> 检测到的 Tailscale IPv4；客户端只填 Host 的 Tailscale URL。本文中 token、bindHost、
+> label 的历史段落已过时，以 README 为准。
+
 ## 1. 已验证组合
 
 | 组件 | 版本/环境 | 状态 |
@@ -31,7 +35,7 @@ Desktop `0.2.1-rc.3`，`DSH_HOME=C:\Users\milkspun\.dsh`，`DSH_PROFILE=desktop`
 | `ctx.webServer.register({kind:'prefix', path, handler})` | 控制通道 | 官方 webServer 服务 |
 | `ctx.connection.admit(req)`、`ctx.connection.browserPeer` | 浏览器 cookie/Peer 校验 | 官方 connection 服务 |
 | `ctx.connection.rpc.call(channel, endpoint, payload, signal)` | 浏览器插件调用本机控制通道 | 官方客户端 connection 服务；POST `<channel>/<endpoint>`，body 的 `method` 是裸 endpoint（如 `status`），不把 channel 写进 method |
-| `ctx.configEditor.entries()` / `edit(entry, change)` | Settings 保存 role/bindHost/port/label，写 profile 并重载 | 官方 configEditor 服务；只适用于 root-Include 的唯一 entry |
+| `ctx.configEditor.entries()` / `edit(entry, change)` | Settings 保存 role/port，写 profile 并重载 | 官方 configEditor 服务；只适用于 root-Include 的唯一 entry |
 | `ctx.slots.register({ name: 'settings.section', ... })` | 官方 Settings 页 | 官方 Slot 系统；shell 提供内边距/滚动，页面自带标题 |
 | `ctx.credentials.resolve/set/unset` | Host 令牌存储 | 官方 credentials 服务；引用名需匹配 `/^[A-Za-z_][A-Za-z0-9_]*$/` |
 | `ctx.slots.inject/register` | 顶部状态胶囊、设置页、会话标题胶囊 | 官方 Slot 系统 |

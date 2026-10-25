@@ -1,5 +1,11 @@
 # 测试报告
 
+> 当前版本为 **Tailscale-only、无配对令牌**，最新验证：
+> 43 个 JS 文件、35 个单元测试、23 个 bundle 文件；本机双实例 E2E 的 Host 桥在
+> `100.68.241.8:18084`，覆盖 Tailscale-only 绑定、role/port 保存、Host stop/start、
+> `settings/describe`/`remoteAccess/follow` 转发、远端会话/工作流/审批/提问、断开回 local。
+> 下文 0.1.0 早期关于令牌、bindHost、47821 的日志属于历史记录。
+
 - 日期：2026-10-24（Asia/Shanghai）
 - 插件：`dsh-private-remote@0.1.0`，协议 `1`
 - 目标 Harness：`0.2.1-rc.3`

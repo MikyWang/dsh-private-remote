@@ -1,12 +1,17 @@
 /**
- * Configuration validation for the single package.
+ * Configuration and Tailscale address helpers for the single package.
  *
- * role=client  -> proxies this Host's Gateway to a paired remote Host.
- * role=host    -> serves the bridge; the local UI stays local.
+ * role=client  -> proxies this Host's Gateway to a remote Host on the tailnet.
+ * role=host    -> serves the bridge on the detected Tailscale IPv4.
  * role=both    -> both halves, for a machine that is served and pairs out.
+ *
+ * There is no user-selectable bind address: the Host always listens on the
+ * machine's Tailscale IPv4 (100.64.0.0/10). The tailnet is the security
+ * boundary; there is no pairing token.
  */
 
 import { isIP } from 'node:net';
+import os from 'node:os';
 import { DEFAULT_PORT, ERR } from '../shared/protocol.js';
 
 export class ConfigError extends Error {
@@ -20,26 +25,8 @@ export class ConfigError extends Error {
 
 export const DEFAULT_CONFIG = Object.freeze({
   role: 'client',
-  bindHost: '127.0.0.1',
   port: DEFAULT_PORT,
-  label: '',
 });
-
-function isPrivateIpv4(host) {
-  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (!match) return false;
-  const octets = match.slice(1).map(Number);
-  if (octets.some((part) => part < 0 || part > 255)) return false;
-  const [a, b] = octets;
-  if (a === 127) return true;
-  if (a === 10) return true;
-  if (a === 192 && b === 168) return true;
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  // Tailscale uses 100.64.0.0/10 (CGNAT); 169.254/16 is link-local.
-  if (a === 100 && b >= 64 && b <= 127) return true;
-  if (a === 169 && b === 254) return true;
-  return false;
-}
 
 export function unbracketHost(host) {
   if (typeof host !== 'string') return '';
@@ -48,67 +35,82 @@ export function unbracketHost(host) {
   return trimmed;
 }
 
-export function isPrivateHost(host) {
-  const value = unbracketHost(host).toLowerCase();
-  if (value === '' || value === '0.0.0.0' || value === '::') return false;
-  if (value === 'localhost' || value.endsWith('.localhost')) return true;
-  if (value.endsWith('.local') || value.endsWith('.ts.net') || value.endsWith('.tailscale.net')) return true;
-  const version = isIP(value);
-  if (version === 4) return isPrivateIpv4(value);
-  if (version === 6) {
-    if (value === '::1') return true;
-    if (value.startsWith('fc') || value.startsWith('fd')) return true;
-    if (value.startsWith('fe80')) return true;
-    // IPv4-mapped private addresses (::ffff:100.x.y.z and friends).
-    const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(value);
-    if (mapped) return isPrivateIpv4(mapped[1]);
-    return false;
-  }
-  return false;
+/** Tailscale IPv4 CGNAT range 100.64.0.0/10. */
+export function isTailscaleIpv4(host) {
+  const value = unbracketHost(host);
+  if (isIP(value) !== 4) return false;
+  const octets = value.split('.').map(Number);
+  return octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127;
 }
 
-export function validateBindHost(host) {
+/** A Tailscale IPv4 or a MagicDNS name; the Host only binds the former. */
+export function isTailscaleHost(host) {
+  const value = unbracketHost(host).toLowerCase();
+  if (isTailscaleIpv4(value)) return true;
+  return value.endsWith('.ts.net') || value.endsWith('.tailscale.net');
+}
+
+/**
+ * The first Tailscale IPv4 assigned to this machine.
+ * @param {ReturnType<typeof os.networkInterfaces>} [interfaces]
+ * @returns {string | null}
+ */
+export function findTailscaleAddress(interfaces = os.networkInterfaces()) {
+  const candidates = [];
+  for (const [interfaceName, entries] of Object.entries(interfaces ?? {})) {
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const address = typeof entry?.address === 'string' ? entry.address : '';
+      const rawFamily = entry?.family;
+      const family = rawFamily === 4 || rawFamily === 'IPv4' ? 4 : 0;
+      if (address === '' || family !== 4 || !isTailscaleIpv4(address)) continue;
+      candidates.push({ interfaceName, address });
+    }
+  }
+  candidates.sort((a, b) => a.address.localeCompare(b.address) || a.interfaceName.localeCompare(b.interfaceName));
+  return candidates[0]?.address ?? null;
+}
+
+/** The Host only binds a literal Tailscale IPv4. */
+export function validateHostAddress(host) {
   const value = unbracketHost(host);
-  if (value === '' || value === '0.0.0.0' || value === '::') {
-    throw new ConfigError(ERR.BIND_INVALID, 'bindHost 不能是通配地址；请填写本机回环、私网或 Tailscale IP');
-  }
-  if (value === 'localhost') return 'localhost';
-  const version = isIP(value);
-  if (version === 0) {
-    throw new ConfigError(ERR.BIND_INVALID, 'bindHost 必须是 IP 字面量或 localhost');
-  }
-  if (!isPrivateHost(value)) {
-    throw new ConfigError(ERR.BIND_INVALID, 'bindHost 只允许回环、RFC1918、Tailscale 100.64/10 或 IPv6 私网地址');
+  if (!isTailscaleIpv4(value)) {
+    throw new ConfigError(
+      ERR.TAILSCALE_MISSING,
+      'Host 只监听 Tailscale IPv4 (100.64.0.0/10)；请先连接 Tailscale，或检查 Tailscale 网卡',
+      { field: 'tailscale', cause: 'ETSUNREACHABLE' },
+    );
   }
   return value;
 }
 
 export function validateRemoteUrl(raw) {
-  if (typeof raw !== 'string' || raw.trim() === '') {
-    throw new ConfigError(ERR.PROTOCOL, '请输入远端地址');
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  if (text === '') {
+    throw new ConfigError(ERR.PROTOCOL, '请输入 Host 的 Tailscale 地址');
   }
   let parsed;
   try {
-    parsed = new URL(raw.trim());
+    parsed = new URL(text.includes('://') ? text : `http://${text}`);
   } catch {
-    throw new ConfigError(ERR.PROTOCOL, '远端地址格式无效');
+    throw new ConfigError(ERR.PROTOCOL, 'Host 地址格式无效');
   }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new ConfigError(ERR.PROTOCOL, '远端地址只支持 http:// 或 https://');
+  if (parsed.protocol !== 'http:') {
+    throw new ConfigError(ERR.PROTOCOL, 'Host 地址必须是 http://；Tailscale 负责链路加密');
   }
   if (parsed.username !== '' || parsed.password !== '') {
-    throw new ConfigError(ERR.PROTOCOL, '远端地址不能包含用户名或密码');
+    throw new ConfigError(ERR.PROTOCOL, 'Host 地址不能包含用户名或密码');
   }
   if (parsed.pathname !== '/' && parsed.pathname !== '') {
-    throw new ConfigError(ERR.PROTOCOL, '远端地址不能包含路径；桥固定在根路径 /private-remote');
+    throw new ConfigError(ERR.PROTOCOL, 'Host 地址不能包含路径；桥固定在根路径 /private-remote');
   }
   if (parsed.search !== '' || parsed.hash !== '') {
-    throw new ConfigError(ERR.PROTOCOL, '远端地址不能包含查询参数或片段');
+    throw new ConfigError(ERR.PROTOCOL, 'Host 地址不能包含查询参数或片段');
   }
-  if (parsed.protocol === 'http:' && !isPrivateHost(parsed.hostname)) {
-    throw new ConfigError(ERR.PROTOCOL, '公网地址必须使用 https://；私网/Tailscale 才允许 http://');
+  if (!isTailscaleHost(parsed.hostname)) {
+    throw new ConfigError(ERR.PROTOCOL, '只支持 Tailscale 地址（100.64.0.0/10 或 *.ts.net）');
   }
-  return { url: parsed.origin, secure: parsed.protocol === 'https:' };
+  if (parsed.port === '') parsed.port = String(DEFAULT_PORT);
+  return { url: parsed.origin, secure: false };
 }
 
 export function normalizeConfig(raw) {
@@ -121,13 +123,7 @@ export function normalizeConfig(raw) {
   if (!Number.isInteger(portValue) || portValue < 1 || portValue > 65535) {
     throw new ConfigError(ERR.NOT_CONFIGURED, 'port 必须是 1-65535 的整数');
   }
-  const label = typeof input.label === 'string' ? input.label.trim().slice(0, 80) : '';
-  // Keep the Host listen address even while the role is client: the Settings
-  // page lets a person prepare Host settings before switching modes, and the
-  // value must survive that round trip. Validation still happens for every
-  // role, so a public or wildcard address never enters the profile.
-  const bindHost = validateBindHost(input.bindHost === undefined ? '127.0.0.1' : input.bindHost);
-  return { role, bindHost, port: portValue, label };
+  return { role, port: portValue };
 }
 
 export function bridgeUrl(baseUrl, leaf) {

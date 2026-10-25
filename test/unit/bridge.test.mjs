@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { findTailscaleAddress } from '../../src/host/config.js';
 import { BridgeClient } from '../../src/host/bridge-client.js';
 import { BridgeServer } from '../../src/host/bridge-server.js';
+
+const TAILSCALE = findTailscaleAddress();
 
 function quietLog() {
   return { info() {}, warn() {}, error() {} };
@@ -68,13 +71,13 @@ function createFakeHarness(record) {
   return { connection, gateway, peers };
 }
 
-test('bridge authenticates, forwards allow-listed unary calls, streams and denies the rest', async (t) => {
+test('bridge authenticates, forwards allow-listed unary calls, streams and denies the rest', { skip: TAILSCALE === null }, async (t) => {
   const record = { unary: [], streams: [] };
   const fake = createFakeHarness(record);
   const server = new BridgeServer({
     connection: fake.connection,
     gateway: fake.gateway,
-    config: { bindHost: '127.0.0.1', port: 0, label: 'Fake Host' },
+    config: { bindHost: TAILSCALE, port: 0, label: 'Fake Host' },
     token: 'test-token',
     hostId: 'host-test',
     compat: { ok: true, missing: [], harnessVersion: '0.2.1-rc.3', supportedHarness: '0.2.1-rc.3', compatId: 'test' },
@@ -85,7 +88,7 @@ test('bridge authenticates, forwards allow-listed unary calls, streams and denie
   t.after(async () => {
     await server.stop();
   });
-  const url = `http://127.0.0.1:${server.port}`;
+  const url = `http://${TAILSCALE}:${server.port}`;
 
   const wrong = new BridgeClient({ url, token: 'wrong-token', clientName: 'wrong' });
   await assert.rejects(wrong.connect(), (error) => error.code === 'remote/auth-failed');
@@ -142,6 +145,8 @@ test('bridge authenticates, forwards allow-listed unary calls, streams and denie
   const peer = record.unary[0].peer;
   assert.equal(peer.disposed, false);
   client.close();
-  await new Promise((resolve) => setTimeout(resolve, 80));
+  for (let index = 0; index < 50 && peer.disposed === false; index += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
   assert.equal(peer.disposed, true);
 });

@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import net from 'node:net';
 import test from 'node:test';
+import { findTailscaleAddress } from '../../src/host/config.js';
 import {
-  assertLocalBindAddress,
   buildSettingsConfig,
   findSettingsEntry,
-  listLocalAddresses,
   probeBind,
   settingsChanged,
 } from '../../src/host/settings.js';
 
-function listen(host = '127.0.0.1') {
+const TAILSCALE = findTailscaleAddress();
+
+function listen(host) {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     server.once('error', reject);
@@ -29,95 +30,54 @@ test('settings entry lookup prefers the package name and rejects ambiguity', () 
   );
 });
 
-test('settings config keeps unknown fields and always writes the four settings', () => {
+test('settings config writes role/port, removes legacy bindHost/label and keeps unknown fields', () => {
   const current = {
     role: 'client',
     bindHost: '127.0.0.1',
     port: 47821,
-    label: '',
+    label: 'old',
     futureField: { keep: true },
   };
-  const next = {
+  const next = { role: 'host', port: 50000 };
+  assert.deepEqual(buildSettingsConfig(current, next), {
     role: 'host',
-    bindHost: '100.68.241.8',
     port: 50000,
-    label: 'Windows',
-  };
-  assert.deepEqual(buildSettingsConfig(current, next), { ...current, ...next });
-  assert.deepEqual(buildSettingsConfig(null, next), next);
+    futureField: { keep: true },
+  });
+  assert.deepEqual(buildSettingsConfig(null, next), { role: 'host', port: 50000 });
 });
 
-test('settings comparison normalizes the port and detects real changes', () => {
-  const current = { role: 'client', bindHost: '100.68.241.8', port: 47821, label: 'Mac' };
-  assert.equal(settingsChanged(current, { ...current, port: '47821' }), false);
-  assert.equal(settingsChanged(current, { ...current, role: 'host' }), true);
-  assert.equal(settingsChanged(current, { ...current, bindHost: '127.0.0.1' }), true);
-  assert.equal(settingsChanged(current, { ...current, label: 'Other' }), true);
+test('settings comparison only reacts to role and port changes', () => {
+  const current = { role: 'client', port: 18082 };
+  assert.equal(settingsChanged(current, { role: 'client', port: '18082' }), false);
+  assert.equal(settingsChanged(current, { role: 'host', port: 18082 }), true);
+  assert.equal(settingsChanged(current, { role: 'client', port: 18083 }), true);
   assert.equal(settingsChanged(null, current), true);
 });
 
-test('local address suggestions keep private/Tailscale/ULA, drop public and link-local, and sort by kind', () => {
-  const addresses = listLocalAddresses({
-    Tailscale: [{ address: '100.68.241.8', family: 'IPv4', internal: false }],
-    Ethernet: [
-      { address: '192.168.1.5', family: 4, internal: false },
-      { address: '8.8.8.8', family: 'IPv4', internal: false },
-      { address: '100.128.0.1', family: 'IPv4', internal: false },
-    ],
-    IPv6: [
-      { address: 'fd7a:115c:a1e0::1', family: 'IPv6', internal: false },
-      { address: 'fe80::1', family: 'IPv6', internal: false },
-    ],
-    Loopback: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
-  });
-  assert.deepEqual(addresses.map((entry) => entry.address), [
-    '100.68.241.8',
-    '192.168.1.5',
-    'fd7a:115c:a1e0::1',
-    '127.0.0.1',
-  ]);
-  assert.deepEqual(addresses.map((entry) => entry.kind), ['tailscale', 'private', 'ula', 'loopback']);
-  assert.equal(addresses[0].interfaceName, 'Tailscale');
-});
-
-test('probeBind rejects an occupied port and accepts a free one', async (t) => {
-  const server = await listen();
+test('probeBind rejects an occupied Tailscale port and accepts a free one', { skip: TAILSCALE === null }, async (t) => {
+  const server = await listen(TAILSCALE);
   t.after(async () => {
     await new Promise((resolve) => server.close(resolve));
   });
   const occupied = server.address().port;
   await assert.rejects(
-    probeBind('127.0.0.1', occupied),
+    probeBind(TAILSCALE, occupied),
     (error) => error.code === 'host/bind-invalid' && /占用/.test(error.message),
   );
 
-  const freeServer = await listen();
+  const freeServer = await listen(TAILSCALE);
   const freePort = freeServer.address().port;
   await new Promise((resolve) => freeServer.close(resolve));
-  await probeBind('127.0.0.1', freePort);
+  await probeBind(TAILSCALE, freePort);
 });
 
-test('probeBind rejects wildcard, public and invalid ports before listening', async () => {
-  await assert.rejects(probeBind('0.0.0.0', 47821), (error) => error.code === 'host/bind-invalid');
-  await assert.rejects(probeBind('8.8.8.8', 47821), (error) => error.code === 'host/bind-invalid');
-  await assert.rejects(probeBind('127.0.0.1', 0), (error) => error.code === 'host/not-configured');
-  await assert.rejects(probeBind('127.0.0.1', 70000), (error) => error.code === 'host/not-configured');
-});
-
-test('assertLocalBindAddress accepts loopback and assigned addresses only', () => {
-  const addresses = [
-    { address: '100.68.241.8', family: 'IPv4', kind: 'tailscale', interfaceName: 'Tailscale' },
-    { address: '127.0.0.1', family: 'IPv4', kind: 'loopback', interfaceName: 'Loopback' },
-  ];
-  assert.equal(assertLocalBindAddress('127.0.0.1', addresses), '127.0.0.1');
-  assert.equal(assertLocalBindAddress('localhost', addresses), 'localhost');
-  assert.equal(assertLocalBindAddress('100.68.241.8', addresses), '100.68.241.8');
-  assert.throws(
-    () => assertLocalBindAddress('100.68.241.9', addresses),
-    (error) => error.code === 'host/bind-invalid' && /不属于本机接口/.test(error.message),
-  );
-  assert.throws(
-    () => assertLocalBindAddress('8.8.8.8', addresses),
-    (error) => error.code === 'host/bind-invalid',
-  );
+test('probeBind rejects non-Tailscale hosts and invalid ports before listening', async () => {
+  for (const host of ['0.0.0.0', '8.8.8.8', '127.0.0.1', 'localhost']) {
+    await assert.rejects(probeBind(host, 18082), (error) => error.code === 'host/tailscale-missing', host);
+  }
+  if (TAILSCALE !== null) {
+    await assert.rejects(probeBind(TAILSCALE, 0), (error) => error.code === 'host/not-configured');
+    await assert.rejects(probeBind(TAILSCALE, 70000), (error) => error.code === 'host/not-configured');
+  }
 });

@@ -8,12 +8,11 @@ const CONTROL_ACTIONS = new Set([
   'useLocal',
   'reconnect',
   'hostInfo',
-  'rotateToken',
   'dropClients',
-  'forgetHostToken',
   'saveSettings',
   'resetSettings',
   'startHost',
+  'stopHost',
 ]);
 
 const MAX_BODY_BYTES = 1024 * 1024;

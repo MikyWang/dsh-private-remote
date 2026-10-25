@@ -1,5 +1,15 @@
 # 安全模型
 
+## 当前模型（以 README 为准）
+
+- Host **只监听本机 Tailscale IPv4**（`100.64.0.0/10`），不提供回环/私网/公网绑定选项。
+- **没有应用层配对令牌**。固定传输 key 是公开的协议常量，只做分帧/版本隔离，不是认证秘密。
+- 任何能连上 `TailscaleIP:port` 的设备都被当作 owner 等价 Peer。**Tailscale 设备身份和 ACL 是唯一权限边界**；不要把端口暴露到公网。
+- 远端只读 `settings/describe`（Host API controller 强制 redact secrets）和 `remoteAccess/follow`；`settings` 写、终端、文件预览、插件管理、模型 Key 等仍不暴露。
+- 白名单仍是端点边界，日志不记录业务负载/cookie/模型 Key。
+
+> 下文 0.1.0 早期的“配对令牌 / 任意绑定地址”段落是历史记录，已被上述模型取代。
+
 本文说明“私人远程”保护什么、信任什么、拒绝什么，以及第一版明确接受的残余风险。
 实现以 `0.1.0` / 协议 1 / Harness `0.2.1-rc.3` 为准。
 

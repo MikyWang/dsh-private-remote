@@ -6,7 +6,8 @@
  *   - host:   remote bridge server on a separate port, bound to a private IP.
  *
  * The browser control channel only accepts the authenticated local Browser
- * Peer. It returns the Host token only to that Peer, never to a remote bridge.
+ * Peer. The Host bridge has no pairing token: it binds the Tailscale IPv4 and
+ * treats the tailnet ACL as the security boundary.
  */
 
 import fs from 'node:fs/promises';
@@ -16,21 +17,24 @@ import { randomUUID } from 'node:crypto';
 import {
   CONTROL_CHANNEL,
   ERR,
-  HOST_TOKEN_REF,
   PLUGIN_VERSION,
   PROTOCOL_VERSION,
-  clampText,
+  TRANSPORT_KEY,
   fail,
   isPlainObject,
   ok,
   toFailure,
 } from '../shared/protocol.js';
-import { DEFAULT_CONFIG, ConfigError, normalizeConfig, validateRemoteUrl } from './config.js';
 import {
-  assertLocalBindAddress,
+  DEFAULT_CONFIG,
+  ConfigError,
+  findTailscaleAddress,
+  normalizeConfig,
+  validateRemoteUrl,
+} from './config.js';
+import {
   buildSettingsConfig,
   findSettingsEntry,
-  listLocalAddresses,
   probeBind,
   settingsChanged,
 } from './settings.js';
@@ -38,12 +42,6 @@ import { BridgeClient } from './bridge-client.js';
 import { BridgeServer } from './bridge-server.js';
 import { createGatewaySwitch } from './gateway-switch.js';
 import { registerControlRoute } from './control-route.js';
-import {
-  forgetHostToken,
-  getOrCreateHostToken,
-  readHostToken,
-  rotateHostToken,
-} from './credentials.js';
 import {
   SUPPORTED_HARNESS,
   harnessVersion,
@@ -90,12 +88,12 @@ export class PrivateRemoteController {
     }
     this.gateway = null;
     this.connection = null;
-    this.credentials = null;
     this.compat = null;
     this.bridge = null;
     this.switch = null;
     this.hostServer = null;
     this.hostStarting = false;
+    this.tailscaleAddress = null;
     this.intentionalClose = false;
     this.disposed = false;
     this.configEditor = null;
@@ -106,21 +104,19 @@ export class PrivateRemoteController {
       connected: false,
       host: null,
       url: '',
-      label: '',
-      token: null,
       error: null,
       generation: 0,
     };
     this.hostState = {
       enabled: roleIncludesHost(this.config),
       listening: false,
-      host: this.config.bindHost,
+      host: '',
       port: this.config.port,
       url: null,
       error: null,
       stopped: false,
     };
-    this.clientConfig = { url: '', label: '' };
+    this.clientConfig = { url: '' };
     this.configDir = path.join(dshHome(), 'private-remote');
     this.clientConfigPath = path.join(this.configDir, 'client.json');
     this.hostMetaPath = path.join(this.configDir, 'host-meta.json');
@@ -159,10 +155,9 @@ export class PrivateRemoteController {
         if (this.configEditor === c.configEditor) this.configEditor = null;
       };
     });
-    this.ctx.inject(['connection', 'typertGateway', 'credentials'], (c) => {
+    this.ctx.inject(['connection', 'typertGateway'], (c) => {
       this.connection = c.connection;
       this.gateway = c.typertGateway;
-      this.credentials = c.credentials;
       this.hostDeps = c;
       this.compat = probeGateway(c.typertGateway);
       this.ensureSwitch();
@@ -171,10 +166,9 @@ export class PrivateRemoteController {
       }
     });
     // A persisted pairing only prefills the Settings form. Never install the
-    // Gateway switch before the official client boot: the token is memory-only,
-    // and a boot-time remote-offline switch would fail $events/settings and
-    // leave the whole client tree pending. Local mode is safe and honest; the
-    // user explicitly reconnects from Settings with a token.
+    // Gateway switch before the official client boot: a boot-time switch would
+    // fail $events/settings and leave the whole client tree pending. Local mode
+    // is safe and honest; the user explicitly reconnects from Settings.
     void this.loading.then(() => this.ensureSwitch());
   }
 
@@ -191,7 +185,6 @@ export class PrivateRemoteController {
     }
     if (!this.remoteState.active && !this.remoteState.installed && this.clientConfig.url !== '') {
       this.remoteState.url = this.clientConfig.url;
-      this.remoteState.label = this.clientConfig.label;
       this.log.info('saved pairing loaded; staying local until explicit reconnect');
     }
   }
@@ -200,10 +193,12 @@ export class PrivateRemoteController {
     if (this.disposed) return;
     if (this.hostStarting || this.hostServer !== null) return;
     this.hostStarting = true;
+    const tailscale = findTailscaleAddress();
+    this.tailscaleAddress = tailscale;
     this.hostState = {
       enabled: roleIncludesHost(this.config),
       listening: false,
-      host: this.config.bindHost,
+      host: tailscale ?? '',
       port: this.config.port,
       url: null,
       error: null,
@@ -219,6 +214,12 @@ export class PrivateRemoteController {
       if (this.configError !== null) {
         throw this.configError;
       }
+      if (tailscale === null) {
+        throw new ConfigError(
+          ERR.TAILSCALE_MISSING,
+          '未检测到 Tailscale IPv4；请先启动并登录 Tailscale，Host 只监听 100.64.0.0/10',
+        );
+      }
       const compat = probeGateway(deps.typertGateway);
       this.compat = compat;
       if (!compat.ok) {
@@ -226,13 +227,17 @@ export class PrivateRemoteController {
         error.code = ERR.UNSUPPORTED;
         throw error;
       }
-      const token = await getOrCreateHostToken(deps.credentials);
       const hostId = await this.hostIdPromise;
       const server = new BridgeServer({
         connection: deps.connection,
         gateway: deps.typertGateway,
-        config: this.config,
-        token,
+        config: {
+          role: this.config.role,
+          bindHost: tailscale,
+          port: this.config.port,
+          label: '',
+        },
+        token: TRANSPORT_KEY,
         hostId,
         compat,
         harnessVersion: harnessVersion(),
@@ -252,7 +257,7 @@ export class PrivateRemoteController {
       this.hostState = {
         enabled: true,
         listening: true,
-        host: this.config.bindHost,
+        host: tailscale,
         port: server.port,
         url: server.listenUrl(),
         error: null,
@@ -263,7 +268,7 @@ export class PrivateRemoteController {
       this.hostState = {
         enabled: roleIncludesHost(this.config),
         listening: false,
-        host: this.config.bindHost,
+        host: tailscale ?? '',
         port: this.config.port,
         url: null,
         error: {
@@ -301,18 +306,16 @@ export class PrivateRemoteController {
           return await this.reconnectAction();
         case 'hostInfo':
           return await this.hostInfoAction();
-        case 'rotateToken':
-          return await this.rotateTokenAction();
         case 'dropClients':
           return await this.dropClientsAction();
-        case 'forgetHostToken':
-          return await this.forgetHostTokenAction();
         case 'saveSettings':
           return await this.saveSettingsAction(input);
         case 'resetSettings':
           return await this.resetSettingsAction();
         case 'startHost':
           return await this.startHostAction();
+        case 'stopHost':
+          return await this.stopHostAction();
         default:
           return fail(ERR.PROTOCOL, `未知控制操作 ${String(endpoint)}`);
       }
@@ -323,13 +326,14 @@ export class PrivateRemoteController {
 
   status() {
     const compat = this.compat;
+    const tailscale = findTailscaleAddress();
+    this.tailscaleAddress = tailscale;
     const remote = {
       installed: this.remoteState.installed,
       active: this.remoteState.active,
       connected: this.remoteState.connected,
       host: this.remoteState.host,
       url: this.remoteState.url,
-      label: this.remoteState.label,
       error: this.remoteState.error,
       generation: this.remoteState.generation,
     };
@@ -338,32 +342,24 @@ export class PrivateRemoteController {
       listening: this.hostServer !== null,
       starting: this.hostStarting,
       stopped: this.hostState.stopped === true,
-      host: this.config.bindHost,
+      host: tailscale ?? this.hostState.host ?? '',
       port: this.hostServer?.port ?? this.config.port,
       url: this.hostServer?.listenUrl() ?? null,
       info: this.hostServer?.hostInfo() ?? null,
       clients: this.hostServer?.clientInfos() ?? [],
       error: this.hostState.error,
     };
-    let localAddresses = [];
-    try {
-      localAddresses = listLocalAddresses();
-    } catch {
-      localAddresses = [];
-    }
     return {
       mode: remote.installed ? (remote.active ? 'remote' : 'remote-offline') : (host.listening ? 'host' : 'local'),
       remote,
       host,
-      clientConfig: { url: this.clientConfig.url, label: this.clientConfig.label },
+      tailscale,
+      clientConfig: { url: this.clientConfig.url },
       config: {
         role: this.config.role,
-        bindHost: this.config.bindHost,
         port: this.config.port,
-        label: this.config.label,
       },
       settingsWritable: this.configEditor !== null,
-      localAddresses,
       configError: this.configError === null ? null : {
         code: this.configError.code,
         message: this.configError.message,
@@ -378,18 +374,15 @@ export class PrivateRemoteController {
 
   parseConnectInput(input) {
     const rawUrl = typeof input.url === 'string' ? input.url.trim() : '';
-    const token = typeof input.token === 'string' ? input.token.trim() : '';
-    const label = clampText(input.label, 80);
-    if (token === '') throw new ConfigError(ERR.TOKEN_MISSING, '请输入配对令牌');
     const parsed = validateRemoteUrl(rawUrl);
-    return { url: parsed.url, secure: parsed.secure, token, label };
+    return { url: parsed.url, secure: parsed.secure };
   }
 
   createBridgeClient(input) {
     return new BridgeClient({
       url: input.url,
-      token: input.token,
-      clientName: this.config.label || os.hostname(),
+      token: TRANSPORT_KEY,
+      clientName: os.hostname(),
       clientHarnessVersion: harnessVersion(),
       pluginVersion: PLUGIN_VERSION,
       onClose: (error) => this.handleBridgeClose(error),
@@ -421,7 +414,7 @@ export class PrivateRemoteController {
     const client = this.createBridgeClient(parsed);
     try {
       const host = this.validateHostInfo(await client.connect());
-      return ok({ host, url: parsed.url, label: parsed.label });
+      return ok({ host, url: parsed.url });
     } finally {
       client.close('测试连接完成');
     }
@@ -452,8 +445,6 @@ export class PrivateRemoteController {
     this.remoteState.connected = true;
     this.remoteState.host = host;
     this.remoteState.url = parsed.url;
-    this.remoteState.label = parsed.label;
-    this.remoteState.token = parsed.token;
     this.remoteState.error = null;
     this.remoteState.generation += 1;
     try {
@@ -464,18 +455,17 @@ export class PrivateRemoteController {
       this.remoteState.connected = false;
       this.remoteState.installed = false;
       this.remoteState.host = null;
-      this.remoteState.token = null;
       this.bridge = null;
       client.close('切换失败');
       throw error;
     }
     try {
-      await this.saveClientConfig({ url: parsed.url, label: parsed.label });
+      await this.saveClientConfig({ url: parsed.url });
     } catch (error) {
       this.log.warn('client config save failed:', error instanceof Error ? error.message : String(error));
     }
     this.log.info('remote mode active', host.deviceName, host.hostname, host.platform);
-    return ok({ host, url: parsed.url, label: parsed.label });
+    return ok({ host, url: parsed.url });
   }
 
   async disconnectAction() {
@@ -483,9 +473,8 @@ export class PrivateRemoteController {
     this.switch?.uninstall();
     this.remoteState.installed = false;
     this.remoteState.url = this.clientConfig.url;
-    this.remoteState.label = this.clientConfig.label;
     this.remoteState.generation += 1;
-    this.log.info('remote disconnected; local mode (saved pairing kept for reconnect)');
+    this.log.info('remote disconnected; local mode (saved address kept for reconnect)');
     return ok(this.status());
   }
 
@@ -497,9 +486,8 @@ export class PrivateRemoteController {
     this.switch?.uninstall();
     this.remoteState.installed = false;
     this.remoteState.url = '';
-    this.remoteState.label = '';
     this.remoteState.generation += 1;
-    this.clientConfig = { url: '', label: '' };
+    this.clientConfig = { url: '' };
     try {
       await fs.rm(this.clientConfigPath, { force: true });
     } catch (error) {
@@ -520,7 +508,6 @@ export class PrivateRemoteController {
     this.remoteState.active = false;
     this.remoteState.connected = false;
     this.remoteState.host = null;
-    this.remoteState.token = null;
     this.remoteState.error = null;
     this.remoteState.installed = this.switch?.installed === true;
     this.remoteState.generation += 1;
@@ -532,38 +519,21 @@ export class PrivateRemoteController {
     if (this.config.role === 'host') {
       return fail(ERR.CLIENT_DISABLED, '当前运行模式为 Host；请先在 设置 → 私人远程 中切换到“客户端”或“两者”');
     }
-    const { url, token, label } = this.remoteState;
-    if (typeof url !== 'string' || url === '' || typeof token !== 'string' || token === '') {
-      return fail(ERR.TOKEN_MISSING, '内存中没有配对令牌，请重新输入令牌');
+    const { url } = this.remoteState;
+    if (typeof url !== 'string' || url === '') {
+      return fail(ERR.NOT_CONFIGURED, '没有上次的 Host 地址，请重新输入');
     }
     await this.disconnectInternal();
-    return this.connectAction({ url, token, label });
+    return this.connectAction({ url });
   }
 
   async hostInfoAction() {
     if (this.hostServer === null) {
       return fail(ERR.NOT_CONFIGURED, 'Host 桥未启动；请在 设置 → 私人远程 中启用 Host，或点击“启动 Host 桥”');
     }
-    const token = await readHostToken(this.credentials);
-    if (token === null) return fail(ERR.TOKEN_MISSING, 'Host 令牌不存在');
     return ok({
-      token,
       listen: { host: this.hostServer.config.bindHost, port: this.hostServer.port, url: this.hostServer.listenUrl() },
       info: this.hostServer.hostInfo(),
-      clients: this.hostServer.clientInfos(),
-    });
-  }
-
-  async rotateTokenAction() {
-    if (this.hostServer === null) {
-      return fail(ERR.NOT_CONFIGURED, 'Host 桥未启动');
-    }
-    const token = await rotateHostToken(this.credentials);
-    await this.hostServer.setToken(token);
-    this.log.info('host token rotated');
-    return ok({
-      token,
-      listen: { host: this.hostServer.config.bindHost, port: this.hostServer.port, url: this.hostServer.listenUrl() },
       clients: this.hostServer.clientInfos(),
     });
   }
@@ -576,24 +546,20 @@ export class PrivateRemoteController {
     return ok({ clients: this.hostServer.clientInfos() });
   }
 
-  async forgetHostTokenAction() {
+  async stopHostAction() {
     const server = this.hostServer;
     this.hostServer = null;
     if (server !== null) await server.stop();
     this.hostState = {
       enabled: roleIncludesHost(this.config),
       listening: false,
-      host: this.config.bindHost,
+      host: this.tailscaleAddress ?? '',
       port: this.config.port,
       url: null,
-      error: {
-        code: ERR.TOKEN_MISSING,
-        message: 'Host 令牌已删除；Host 桥已停止，可点击“启动 Host 桥”生成新令牌',
-      },
+      error: null,
       stopped: true,
     };
-    await forgetHostToken(this.credentials);
-    this.log.info('host token removed; host bridge stopped until restarted');
+    this.log.info('host bridge stopped');
     return ok(this.status());
   }
 
@@ -627,20 +593,21 @@ export class PrivateRemoteController {
       return ok({ applied: false, unchanged: true });
     }
     if (roleIncludesHost(normalized)) {
-      if (this.hostServer !== null && this.hostServer.port === normalized.port) {
-        // The old listener still owns this port until the reload disposes it;
-        // verify the target address is local instead of binding a second one.
-        assertLocalBindAddress(normalized.bindHost);
-      } else {
-        await probeBind(normalized.bindHost, normalized.port);
+      const tailscale = findTailscaleAddress();
+      if (tailscale === null) {
+        throw new ConfigError(
+          ERR.TAILSCALE_MISSING,
+          '未检测到 Tailscale IPv4；请先启动并登录 Tailscale，Host 只监听 100.64.0.0/10',
+        );
+      }
+      if (this.hostServer === null || this.hostServer.port !== normalized.port) {
+        await probeBind(tailscale, normalized.port);
       }
     }
     this.log.info(
       'settings save requested:',
       normalized.role,
-      normalized.bindHost,
       normalized.port,
-      normalized.label || '(hostname)',
     );
     await this.configEditor.edit(entry, (current) => buildSettingsConfig(current, normalized));
     return ok({ applied: true, reloading: true });
@@ -694,7 +661,6 @@ export class PrivateRemoteController {
       const text = await fs.readFile(this.clientConfigPath, 'utf8');
       const parsed = JSON.parse(text);
       const url = typeof parsed?.url === 'string' ? parsed.url : '';
-      const label = typeof parsed?.label === 'string' ? parsed.label : '';
       let validated = '';
       if (url !== '') {
         try {
@@ -703,15 +669,15 @@ export class PrivateRemoteController {
           validated = '';
         }
       }
-      this.clientConfig = { url: validated, label: clampText(label, 80) };
+      this.clientConfig = { url: validated };
     } catch {
-      this.clientConfig = { url: '', label: '' };
+      this.clientConfig = { url: '' };
     }
   }
 
   async saveClientConfig(config) {
     await fs.mkdir(this.configDir, { recursive: true, mode: 0o700 });
-    const body = JSON.stringify({ url: config.url, label: config.label }, null, 2);
+    const body = JSON.stringify({ url: config.url }, null, 2);
     await fs.writeFile(this.clientConfigPath, `${body}\n`, { mode: 0o600 });
   }
 
@@ -744,7 +710,6 @@ export class PrivateRemoteController {
     this.remoteState.installed = false;
     this.remoteState.active = false;
     this.remoteState.connected = false;
-    this.remoteState.token = null;
     const server = this.hostServer;
     this.hostServer = null;
     if (server !== null) {

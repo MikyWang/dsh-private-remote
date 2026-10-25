@@ -17,11 +17,14 @@ export const CONTROL_CHANNEL = '/private-remote';
 export const BRIDGE_PREFIX = '/private-remote';
 
 /** Default bridge TCP port. */
-export const DEFAULT_PORT = 47821;
+export const DEFAULT_PORT = 18082;
 
-/** Official credential ref for the host pairing token. */
-// The official local credential provider only accepts /^[A-Za-z_][A-Za-z0-9_]*$/.
-export const HOST_TOKEN_REF = 'private_remote_host_token';
+/**
+ * Fixed, public protocol key for the transport handshake. It is NOT an
+ * authentication secret: the security boundary is Tailscale's device identity
+ * and ACL. It only separates this wire protocol from unrelated traffic.
+ */
+export const TRANSPORT_KEY = 'dsh-private-remote/transport-v1';
 
 export const LIMITS = Object.freeze({
   handshakeBytes: 8 * 1024,
@@ -61,7 +64,6 @@ export const DIRECTION_S2C = 2;
 export const ERR = Object.freeze({
   INTERNAL: 'gateway/internal',
   AUTH_FAILED: 'remote/auth-failed',
-  AUTH_ROTATED: 'remote/auth-rotated',
   VERSION_MISMATCH: 'remote/version-mismatch',
   UNSUPPORTED: 'remote/unsupported',
   ENDPOINT_DENIED: 'remote/endpoint-denied',
@@ -73,8 +75,7 @@ export const ERR = Object.freeze({
   REPLAY: 'remote/replay',
   TAMPERED: 'remote/tampered',
   PROTOCOL: 'remote/protocol',
-  TOKEN_MISSING: 'host/token-missing',
-  CREDENTIALS_UNAVAILABLE: 'host/credentials-unavailable',
+  TAILSCALE_MISSING: 'host/tailscale-missing',
   NOT_CONFIGURED: 'host/not-configured',
   BIND_INVALID: 'host/bind-invalid',
   CONFIG_INVALID: 'host/config-invalid',

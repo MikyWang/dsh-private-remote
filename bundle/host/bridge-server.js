@@ -343,11 +343,6 @@ export class BridgeServer {
     }
   }
 
-  async setToken(token) {
-    this.token = token;
-    await this.closeAllSessions('token-rotated');
-  }
-
   async dropClients() {
     await this.closeAllSessions('host-dropped');
   }
@@ -424,7 +419,7 @@ export class BridgeServer {
 
   async handleHandshake(req, res) {
     if (this.token === '' || this.token === null) {
-      throw new HttpError(503, ERR.TOKEN_MISSING, 'Host 令牌未配置');
+      throw new HttpError(503, ERR.AUTH_FAILED, 'Host 传输协议密钥未配置');
     }
     if (this.sessions.size >= LIMITS.maxClients) {
       throw new HttpError(503, ERR.BUSY, 'Host 已达到最大客户端数');
