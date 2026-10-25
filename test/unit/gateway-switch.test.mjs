@@ -100,6 +100,28 @@ test('active remote with a closed bridge fails offline, not locally', async () =
   assert.equal(calls.requests.length, 0);
 });
 
+test('startup settings/describe is readable by a local owner API peer; other peers/endpoints stay browser-only', async () => {
+  const { calls, browserPeer, otherPeer, states, gateway, sw } = harness();
+  sw.install();
+  states.active = true;
+
+  const startupRead = await gateway.dispatchRpc('settings/describe', { args: {} }, undefined, otherPeer);
+  assert.equal(startupRead.ok, true);
+  assert.deepEqual(calls.requests.at(-1), { endpoint: 'settings/describe', payload: { args: {} } });
+
+  const page = await gateway.dispatchRpc('session/page', { args: {} }, undefined, otherPeer);
+  assert.equal(page.ok, false);
+  assert.equal(page.error.code, ERR.FORBIDDEN);
+
+  const browserRead = await gateway.dispatchRpc('settings/describe', { args: {} }, undefined, browserPeer);
+  assert.equal(browserRead.ok, true);
+
+  const viewer = { principal: { kind: 'viewer' }, interactions: 'none' };
+  const viewerRead = await gateway.dispatchRpc('settings/describe', { args: {} }, undefined, viewer);
+  assert.equal(viewerRead.ok, false);
+  assert.equal(viewerRead.error.code, ERR.FORBIDDEN);
+});
+
 test('uninstall restores the local gateway for explicit local mode', async () => {
   const { calls, browserPeer, states, gateway, sw } = harness();
   sw.install();

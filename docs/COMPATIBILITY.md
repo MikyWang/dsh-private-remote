@@ -79,6 +79,12 @@ Host 启动时 `probeGateway` 检查：
   `{type:'waterfall', event, eventId, agentId, request}`。
 - `$events/result` 的 args 必须是 `{clientId, eventId, outcome}`；outcome 为官方
   `next`/`result`/`rejected` 形状。
+- 官方客户端启动还会 `POST settings/describe`（无参数；Host API settings controller
+  内部固定 `redactSecrets:true`）并打开 `remoteAccess/follow` 流（owner 基线）。这两个
+  必须在白名单里，否则 Desktop 的 `__DSH_LOCALE__.read()`/设置表单会一直 pending，
+  整个客户端树无法启动。`settings/update|mutate|replace` 仍拒绝。
+- Desktop 主进程的启动读取使用本地 owner API Peer；switch 对 `settings/describe` 放行
+  owner API Peer，其他端点和所有流仍要求 browserPeer。
 - `session/list` 的投影字段（`projections.asOfSeq`、`running`、`blank`、`cwd`、
   `projections.values.userQuestions` 等）。
 - `session/create` 的 args 是 `{request:{cwd|workspaceId|sessionId|agentPreset}}`。

@@ -7,6 +7,10 @@ test('official session, workspace and event endpoints are allowed in the right m
   assert.equal(isAllowed('$events', 'unary'), false);
   assert.equal(isAllowed('$events/result', 'unary'), true);
   assert.equal(isAllowed('$events/result', 'stream'), false);
+  assert.equal(isAllowed('settings/describe', 'unary'), true);
+  assert.equal(isAllowed('settings/describe', 'stream'), false);
+  assert.equal(isAllowed('remoteAccess/follow', 'stream'), true);
+  assert.equal(isAllowed('remoteAccess/follow', 'unary'), false);
   assert.equal(isAllowed('session/page', 'unary'), true);
   assert.equal(isAllowed('session/prompt', 'unary'), true);
   assert.equal(isAllowed('session/follow', 'stream'), true);
@@ -33,6 +37,9 @@ test('dangerous and unknown endpoints are denied', () => {
   const denied = [
     'credentials/resolve',
     'settings/read',
+    'settings/update',
+    'settings/mutate',
+    'settings/replace',
     'terminal/create',
     'workspaceFiles/read',
     'fileUploads/put',

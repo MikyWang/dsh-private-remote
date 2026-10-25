@@ -1836,6 +1836,13 @@ window.__ModuleLoader__.load({
           title: remote.error ? describeError(remote.error, t) : t('remoteOffline'),
         };
       }
+      if (status.clientConfig?.url) {
+        return {
+          label: `${t('remote')} · ${t('disconnected')}`,
+          kind: 'idle',
+          title: `${status.clientConfig.url}\n${t('tokenLabel')}`,
+        };
+      }
       return null;
     }
 

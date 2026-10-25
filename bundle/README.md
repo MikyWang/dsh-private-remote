@@ -211,9 +211,17 @@ dsh plugin --profile <profile> add "$PWD/bundle"
 4. 刷新后官方侧栏显示远端工作区；点工作区，官方会话列表和历史来自远端 Host。
 5. 在官方输入框发送消息；流式回复、工具状态、停止、审批和提问都在官方会话界面里完成。
 6. 顶部状态胶囊和会话标题旁的胶囊显示当前 Host/工作区/在线状态。
-7. “断开连接”保留远端模式但标记离线，拒绝继续提交；“重新连接”需要内存中的令牌，
-   重新认证并重新读取状态。
-8. “切换回本机”删除配对和本机持久化的 URL/标签，恢复本机数据；Host 任务不取消。
+7. “断开连接”关闭远端连接并回到本地模式，保留设置页里上次的 URL/标签；以后要再连远端时
+   重新输入令牌。
+8. “切换回本机”还会删除配对和本机持久化的 URL/标签，恢复本机数据；Host 任务不取消。
+
+远端意外断开时，已加载的页面会进入 `remote-offline` 并拒绝继续提交；点“断开连接”可回
+本地，或重新输入令牌“重新连接”。此时不要直接刷新页面：先点“断开连接”回本地，或恢复连接。
+**客户端/Host 进程重启后不会再自动进入 remote-offline**：`client.json` 只用于预填设置页的
+地址/标签，必须重新输入令牌并显式连接。页面重载沿用当前 Host 进程内存里的 switch 状态：
+`remote` active 仍是 remote（启动读取已放行），local 仍是 local。这样做是为了避免在
+官方客户端启动前安装 Gateway switch，导致 `$events`/settings 启动请求失败、整个客户端
+插件树 pending（macOS 上表现为“应用无法启动”）。
 
 修改运行模式或 Host 设置会重载插件；如果正在连接远端，设置页会拒绝保存并提示先
 “切换回本机”。有 Host 客户端连接时保存也会先确认断开。
@@ -262,12 +270,13 @@ Host 监听状态。监听地址/端口/设备名和令牌操作都在设置页�
 ### 已实现并验证
 
 - `npm run check`：语法、静态规则、秘密扫描通过。
-- `npm test`：38 个单元测试全部通过。
+- `npm test`：39 个单元测试全部通过。
 - `npm run build` / `npm run verify`：生成并校验 24 个文件的 bundle。
 - `npm run test:e2e`：本机两个隔离 Harness 实例（Host + Client）跑通：
   设置页 configEditor 保存/重置、role=both、Host 桥启停、令牌恢复、远端 active 拒绝
-  设置写入、远端工作区基线、会话列表/历史、新建会话、发送/流式回复、停止、审批、提问、
-  断开后拒绝本地回退、显式切回本机。
+  设置写入、`settings/describe`/`remoteAccess/follow` 启动读取转发、客户端重启保持 local
+  （`client.json` 只预填）、意外断线拒绝本地回退、显式 disconnect 回 local、useLocal 清空、
+  远端工作区基线、会话列表/历史、新建会话、发送/流式回复、停止、审批、提问。
 - 官方 Desktop 当前 profile 中 3 个 UI 挂载点均为 active：
   `conversation.header.leading`（顶部状态胶囊）、`settings.section`（设置页）、
   `conversation.session.header.utilities`（会话标题旁的远端工作区胶囊）。
@@ -313,6 +322,7 @@ Host 监听状态。监听地址/端口/设备名和令牌操作都在设置页�
 | 保存 Host 设置失败 `host/config-invalid` | role/端口/bindHost 不合法；只接受 1-65535 端口和私网/回环地址。 |
 | 保存 Host 设置失败 `host/config-save-failed` | 官方 configEditor 不可用，或配置被 home patch/命令行覆盖；查看错误详情，必要时改用 `cordis.patch.yml`。 |
 | `host/bind-invalid` | `bindHost` 不能是 `0.0.0.0`/`::`/公网地址；端口可能已被占用或地址不属于本机接口；换一个端口或选择“检测到的地址”。如果 `netstat`/`Get-NetTCPConnection` 看不到监听进程，可能是 WSL2 mirrored 网络保留了 Linux 临时端口段（本机 44620-48715，47821 在其中），用 18082 等段外端口。 |
+| macOS 启动报 `50 entries did not activate` / `dsh-client-locale: loading` | 旧版本在客户端重启/页面重载时把 Gateway switch 装成 `remote-offline`（或远端未允许 `settings/describe`），官方客户端的 `$events`/locale bootstrap 启动请求失败，整个客户端树 pending。先退出应用，删除 `~/.dsh/private-remote/client.json` 后重启；或点错误页的“禁用第三方插件、备份 profile patch 并重启”。恢复到本地后，更新到修复版再重新连接。 |
 | 保存时报 `host/remote-active` | 正在连接远端；先“切换回本机”再改设置，保存后重新连接。 |
 | 客户端“测试连接”失败 `remote/auth-failed` | 令牌是否从当前 Host 复制；是否已轮换；Host 是否删除了令牌。 |
 | `remote/version-mismatch` | 两端 Harness 版本或协议版本不一致；当前只声明支持 `0.2.1-rc.3` + 协议 1。 |
@@ -338,7 +348,7 @@ Host 监听状态。监听地址/端口/设备名和令牌操作都在设置页�
 
 ```bash
 npm run check       # 语法/静态规则/秘密扫描
-npm test            # 38 个单元测试
+npm test            # 39 个单元测试
 npm run build       # 从 src/ 生成 bundle/
 npm run verify      # 校验 bundle 元数据、哈希、客户端加载方式
 npm run test:e2e    # 启动两个隔离实例并跑完整联调（需要本地 Ollama）

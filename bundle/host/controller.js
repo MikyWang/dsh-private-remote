@@ -170,8 +170,11 @@ export class PrivateRemoteController {
         void this.startHostBridge();
       }
     });
-    // A persisted pairing starts in remote mode but offline: browser calls are
-    // refused until the user reconnects or explicitly switches back to local.
+    // A persisted pairing only prefills the Settings form. Never install the
+    // Gateway switch before the official client boot: the token is memory-only,
+    // and a boot-time remote-offline switch would fail $events/settings and
+    // leave the whole client tree pending. Local mode is safe and honest; the
+    // user explicitly reconnects from Settings with a token.
     void this.loading.then(() => this.ensureSwitch());
   }
 
@@ -189,10 +192,7 @@ export class PrivateRemoteController {
     if (!this.remoteState.active && !this.remoteState.installed && this.clientConfig.url !== '') {
       this.remoteState.url = this.clientConfig.url;
       this.remoteState.label = this.clientConfig.label;
-      this.switch.install();
-      this.remoteState.installed = true;
-      this.remoteState.generation += 1;
-      this.log.info('remote mode restored; reconnect required');
+      this.log.info('saved pairing loaded; staying local until explicit reconnect');
     }
   }
 
@@ -480,6 +480,12 @@ export class PrivateRemoteController {
 
   async disconnectAction() {
     await this.disconnectInternal();
+    this.switch?.uninstall();
+    this.remoteState.installed = false;
+    this.remoteState.url = this.clientConfig.url;
+    this.remoteState.label = this.clientConfig.label;
+    this.remoteState.generation += 1;
+    this.log.info('remote disconnected; local mode (saved pairing kept for reconnect)');
     return ok(this.status());
   }
 
@@ -508,9 +514,9 @@ export class PrivateRemoteController {
     const bridge = this.bridge;
     this.bridge = null;
     if (bridge !== null) bridge.close('已退出远程模式');
-    // Keep the Gateway switch installed in remote-offline mode. The official
-    // UI may still be showing a remote workspace; its next call must fail
-    // with remote/offline rather than silently running on this local Host.
+    // Leave the switch installed here. The caller decides the next state:
+    // disconnectAction returns to local and uninstalls it, useLocal uninstalls
+    // and clears the saved pairing, and reconnect reuses it for the new bridge.
     this.remoteState.active = false;
     this.remoteState.connected = false;
     this.remoteState.host = null;
@@ -519,7 +525,7 @@ export class PrivateRemoteController {
     this.remoteState.installed = this.switch?.installed === true;
     this.remoteState.generation += 1;
     this.intentionalClose = false;
-    this.log.info('remote mode disconnected; local mode requires an explicit switch');
+    this.log.info('remote mode disconnected');
   }
 
   async reconnectAction() {

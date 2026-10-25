@@ -59,8 +59,17 @@ export function createGatewaySwitch(options) {
         if (!state.active) {
           return fail(ERR.OFFLINE, '远端已断开，提交被拒绝；请重新连接或显式切换回本机');
         }
-        if (peer !== connection.browserPeer) {
-          return fail(ERR.FORBIDDEN, '远程模式只接受本机已认证浏览器连接');
+        // The official Desktop main process reads the locale preference through
+        // /api/settings/describe with a local owner API Peer before the page
+        // boots. Allow exactly that redacted read for local owner Peers; every
+        // other endpoint and every stream stays browser-Peer only.
+        const isBrowserPeer = peer === connection.browserPeer;
+        const isStartupOwnerRead = endpoint === 'settings/describe'
+          && peer !== null
+          && typeof peer === 'object'
+          && peer.principal?.kind === 'owner';
+        if (!isBrowserPeer && !isStartupOwnerRead) {
+          return fail(ERR.FORBIDDEN, '远程模式只接受本机已认证浏览器连接（启动读取 settings/describe 除外）');
         }
         let bridge;
         try {

@@ -122,6 +122,9 @@ PASS local two-instance integration (token and cookie redacted)
 
 ### 3.1 该运行实际验证的路径
 
+> 注：第 1 条是 0.1.0 早期的 `remote-offline` 恢复行为；当前版本改为重启保持 local
+> 并只预填 URL/标签，见 8.6。其余路径仍适用。
+
 客户端所有调用都走**它自己本机 Host** 的 `/api` 和 `/api/remote.mux`，与官方会话 UI
 使用的路径相同；不是直接访问远端桥：
 
@@ -289,8 +292,8 @@ checked syntax: 45 JS files
 static checks passed
 
 npm test
-tests 38
-pass 38
+tests 39
+pass 39
 fail 0
 ```
 
@@ -315,7 +318,7 @@ bundle verified: dsh-private-remote@0.1.0, 24 hashed files
 
 ```text
 - host bridge listening on 127.0.0.1:18082
-- client starts in local mode
+- persisted pairing stays local at boot; local /api works; no boot-time Gateway switch
 - settings editor writable; 6 local address suggestion(s)
 - public bind address rejected before the profile was written
 - occupied Host bridge port rejected before reload
@@ -327,10 +330,12 @@ bundle verified: dsh-private-remote@0.1.0, 24 hashed files
 - paired with E2E Host (win32, version unknown)
 - remote mode active in the local Host switch
 - settings write blocked while remote is active; remote mode unchanged
+- remote settings/describe forwarded for the Desktop locale/bootstrap
+- remoteAccess/follow owner baseline through local mux
 - non-allowlisted endpoint denied through the switch
 - remote workspace baseline through local mux: 1 workspace(s)
-- remote session list through local /api: 3 entries; target found
-- remote session page through local /api: 28 records
+- remote session list through local /api: N entries; target found
+- remote session page through local /api: N records
 - new remote session created through the switch: session-...
 - $events stream through local mux forwarded to the remote Host
 - session/follow stream through local mux forwarded to the remote Host
@@ -343,10 +348,13 @@ bundle verified: dsh-private-remote@0.1.0, 24 hashed files
 - new remote session created through the switch: session-...
 - remote user-questions/request delivered through the switched mux (q1)
 - blocking question answered through $events/result; the Host tool call received the reply
-- disconnect keeps remote mode offline; no local fallback
+- explicit disconnect returns to local mode, keeps the saved URL and restores local /api
 - explicit local mode restored local /api (0 local sessions)
 PASS local two-instance integration (token and cookie redacted)
 ```
+
+> 注：第 3 节的 `persisted pairing restored as remote-offline` 是 0.1.0 早期行为；
+> 当前版本重启保持 local，原因见 8.6。
 
 补充说明：
 
@@ -397,3 +405,62 @@ Cordis Inspect 查询 `settings.section`，occupant `private-remote`（order 30�
 的 `private-remote-workspace` 也保持 active。`sidebar.panellist`、`main` 和 `shell.overlay`
 的旧挂载已移除。Host 侧保存/重置由第 8.3 节 E2E 覆盖；官方 Desktop 页面里的实际点击和
 像素验收仍需人工完成。
+
+### 8.6 macOS web-boot 启动失败修复（2026-10-25）
+
+用户提供的 macOS crash log：
+`/Users/wangqiyuan/Library/Logs/DeepSeek Harness/crash-2026-10-25T06-14-47-677Z-web-boot.log`
+（也复制到本机 `C:\Users\milkspun\Desktop\crash-2026-10-25T06-14-47-677Z-web-boot.log`）。
+
+日志要点：
+
+```text
+Error: web boot: 50 entries did not activate
+@deepseek-ai/dsh-client-locale: loading
+@deepseek-ai/dsh-client-ui-*: pending (waiting for service: locale)
+```
+
+说明不是某个 UI 组件报错，而是官方客户端启动时 **locale 服务一直 loading**，其余 50 个
+client 插件都在等它。根因有三条：
+
+1. 旧版 Host 进程启动/重启时只要 `client.json` 存在，就会安装 Gateway switch 并进入
+   `remote-offline`；旧版显式 `disconnect` 也保留这个状态。此时页面重载会触发官方客户端
+   的 `$events`/settings 启动请求，被 switch 拦截/失败，client 插件树无法 activation；
+   设置页也打不开，用户无法切回本机。
+2. 远端桥的 allowlist 拒绝了 `settings/describe`。官方 Desktop 的 `__DSH_LOCALE__.read()`
+   会通过 `/api/settings/describe` 读取语言偏好；没有这个只读端点，即使远端连接 active，
+   locale bootstrap 也会失败/pending。
+3. Desktop 主进程的 welcome/locale bootstrap 用本地 owner API Peer 发
+   `settings/describe`；switch 原来只接受 `connection.browserPeer`，会拒绝这个非浏览器
+   Peer。现在只对 `settings/describe` 放行 owner API Peer，其他端点和流仍只接受
+   browserPeer。
+
+修复：
+
+- `ensureSwitch` 不再仅凭 `client.json` 安装 switch；Host 进程重启后保持 **local**，
+  `client.json` 只预填设置页的 URL/标签，用户必须重新输入令牌并显式连接；页面重载沿用
+  当前 Host 进程内存里的 switch 状态。
+- 显式 `disconnect` 卸载 switch、回到 local，保留 `client.json` 的 URL/标签；
+  `remote-offline` 只保留给已加载页面上的意外断线。
+- allowlist 增加只读 `settings/describe`（Host API controller 固定
+  `redactSecrets: true`）和 `remoteAccess/follow`（owner 基线流）；`settings` 写操作仍拒绝。
+- switch 对 `settings/describe` 放行本地 owner API Peer（Desktop welcome/locale
+  bootstrap），其他端点和所有流仍只接受 browserPeer；新增单元测试覆盖 owner/browser/
+  viewer 三种 Peer。
+- E2E 现在会在启动前 seed 一个无令牌的 `client.json`，断言：
+  - `mode=local`、`remote.installed=false`、本地 `/api` 可用；
+  - 远端 active 时 `settings/describe` 和 `remoteAccess/follow` 都转发成功；
+  - `settings/describe` 响应含 `locale` namespace（Desktop locale bootstrap 需要）；
+  - 显式 `disconnect` 回 local 并保留 URL，`useLocal` 清空。
+
+macOS 恢复/更新步骤（旧版已装，需换到修复版）：
+
+1. 错误页点 **“禁用第三方插件、备份 profile patch 并重启”**；或完全退出应用后删除
+   `~/.dsh/private-remote/client.json` 再启动。不要再点只“重启”，否则旧版会继续装
+   remote-offline switch。
+2. 应用回到本地后，在插件页**移除**旧的 `dsh-private-remote`，再从
+   `https://github.com/MikyWang/dsh-private-remote` 安装最新提交；只重新启用旧安装副本
+   仍然会跑旧代码。
+3. Windows Host 也要 reload 到包含新 allowlist 的版本（插件 row 重启或重启 Desktop）。
+4. Mac 打开 **设置 → 私人远程**，填 Windows 的 `http://100.68.241.8:18082` 和 Host 令牌，
+   测试连接后进入远程。

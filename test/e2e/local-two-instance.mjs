@@ -269,30 +269,17 @@ async function main() {
   assert(typeof token === 'string' && token.length >= 32, 'host token missing');
   log(`host bridge listening on ${hostInfo.value.listen.host}:${hostInfo.value.listen.port}`);
 
-  let localStatus = await control(clientSide.origin, clientSide.cookie, 'status');
+  const localStatus = await control(clientSide.origin, clientSide.cookie, 'status');
   assert(localStatus.ok === true, 'client status failed');
-  if (localStatus.value.mode === 'remote') {
-    // A previous run stopped before its cleanup. The switch must still be able
-    // to hand control back to the local Host explicitly.
-    log('leftover remote session from an earlier run; switching back to local first');
-    const reset = await control(clientSide.origin, clientSide.cookie, 'useLocal');
-    assert(reset.ok === true, 'useLocal after a leftover remote session failed');
-    localStatus = reset;
-  }
-  if (localStatus.value.mode === 'remote-offline') {
-    // A previous run persisted a pairing. On restart the client must restore
-    // remote-offline (never silently run remote work locally), and the user
-    // must be able to go back to local explicitly.
-    const restoredOffline = await api(clientSide.origin, clientSide.cookie, 'session/list', { args: { _request: {} } });
-    assert(restoredOffline.ok === false, 'restored pairing silently ran session/list locally');
-    assert(restoredOffline.error.code === 'remote/offline', `expected remote/offline on restored pairing, got ${restoredOffline.error.code}`);
-    log('persisted pairing restored as remote-offline; no local fallback');
-    const reset = await control(clientSide.origin, clientSide.cookie, 'useLocal');
-    assert(reset.ok === true, 'useLocal after restored pairing failed');
-    localStatus = reset;
-  }
-  assert(localStatus.value.mode === 'local', `expected local mode, got ${localStatus.value.mode}`);
-  log('client starts in local mode');
+  // The runner seeds client.json without a token. The client must stay in
+  // local mode: installing the Gateway switch before the official UI boots
+  // fails $events/settings and leaves the whole client tree pending.
+  assert(localStatus.value.mode === 'local', `expected local mode with a saved pairing, got ${localStatus.value.mode}`);
+  assert(localStatus.value.remote.installed === false, 'a saved pairing installed the Gateway switch at boot');
+  assert(localStatus.value.clientConfig.url === REMOTE_URL, `saved pairing URL lost: ${localStatus.value.clientConfig.url}`);
+  const bootLocalList = await api(clientSide.origin, clientSide.cookie, 'session/list', { args: { _request: {} } });
+  assert(bootLocalList.ok === true, `local /api failed at boot with a saved pairing: ${bootLocalList.error?.code}`);
+  log('persisted pairing stays local at boot; local /api works; no boot-time Gateway switch');
 
   // Settings surface: the official configEditor must persist the same Host
   // fields the Settings page edits, and the plugin reload must restart the
@@ -438,6 +425,32 @@ async function main() {
   const stillRemote = await control(clientSide.origin, clientSide.cookie, 'status');
   assert(stillRemote.ok === true && stillRemote.value.remote.active === true, 'blocked settings write changed the remote mode');
   log('settings write blocked while remote is active; remote mode unchanged');
+
+  // Boot-time reads: the Desktop locale bootstrap and the settings forms POST
+  // settings/describe before the first screen; the owner baseline follows
+  // remoteAccess/follow at boot. Both must be allowed through the bridge.
+  const remoteSettings = await api(clientSide.origin, clientSide.cookie, 'settings/describe', { args: {} });
+  assert(remoteSettings.ok === true, `settings/describe through the switch failed: ${remoteSettings.error?.code}`);
+  const namespaces = remoteSettings.value?.namespaces;
+  assert(Array.isArray(namespaces), 'settings/describe result lacks namespaces for the Desktop locale bootstrap');
+  assert(
+    namespaces.some((namespace) => namespace?.ns === 'locale' || namespace?.id === 'locale'),
+    'settings/describe result lacks the locale namespace',
+  );
+  log('remote settings/describe forwarded for the Desktop locale/bootstrap');
+
+  const accessStream = await openMux(clientSide, 'remoteAccess/follow', { args: {} }, 10000);
+  const accessBaseline = await accessStream.waitFor(
+    (frame) => frame.type === 'item',
+    15000,
+    'remoteAccess/follow baseline',
+  );
+  assert(
+    accessBaseline.value?.type === 'baseline' || accessBaseline.value?.owner === true,
+    `unexpected remoteAccess/follow frame: ${JSON.stringify(accessBaseline).slice(0, 160)}`,
+  );
+  await accessStream.close();
+  log('remoteAccess/follow owner baseline through local mux');
 
   // Permission boundary: a non-allowlisted endpoint must fail at the bridge
   // instead of reaching the remote Gateway.
@@ -670,15 +683,17 @@ async function main() {
 
   const disconnected = await control(clientSide.origin, clientSide.cookie, 'disconnect');
   assert(disconnected.ok === true, 'disconnect failed');
-  assert(disconnected.value.mode === 'remote-offline', `expected remote-offline, got ${disconnected.value.mode}`);
-  const offline = await api(clientSide.origin, clientSide.cookie, 'session/list', { args: { _request: {} } });
-  assert(offline.ok === false, 'session/list silently succeeded after disconnect');
-  assert(offline.error.code === 'remote/offline', `expected remote/offline after disconnect, got ${offline.error.code}`);
-  log('disconnect keeps remote mode offline; no local fallback');
+  assert(disconnected.value.mode === 'local', `expected local after disconnect, got ${disconnected.value.mode}`);
+  assert(disconnected.value.remote.installed === false, 'disconnect left the Gateway switch installed');
+  assert(disconnected.value.clientConfig.url === REMOTE_URL, 'disconnect should keep the saved URL for a later reconnect');
+  const localAfterDisconnect = await api(clientSide.origin, clientSide.cookie, 'session/list', { args: { _request: {} } });
+  assert(localAfterDisconnect.ok === true, `local session/list failed after disconnect: ${localAfterDisconnect.error?.code}`);
+  log('explicit disconnect returns to local mode, keeps the saved URL and restores local /api');
 
   const local = await control(clientSide.origin, clientSide.cookie, 'useLocal');
   assert(local.ok === true, 'useLocal failed');
   assert(local.value.mode === 'local', `expected local after useLocal, got ${local.value.mode}`);
+  assert(local.value.clientConfig.url === '', 'useLocal should clear the saved pairing');
   const localList = await api(clientSide.origin, clientSide.cookie, 'session/list', { args: { _request: {} } });
   assert(localList.ok === true, `local session/list failed after useLocal: ${localList.error?.code}`);
   log(`explicit local mode restored local /api (${(localList.value.items ?? localList.value.sessions ?? []).length} local sessions)`);

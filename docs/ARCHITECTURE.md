@@ -76,22 +76,35 @@ UI 挂载点（全部由官方 Slot 系统渲染）：
 `window.location.reload()`，让官方 UI 的 store 重新从当前生效的 Host 拉取工作区/会话。
 顶部状态胶囊只订阅 `status` 并轮询，不触发页面刷新。
 
+官方客户端启动还会经本机 Gateway 调用 `settings/describe`（Desktop 的
+`__DSH_LOCALE__` 语言 bootstrap 也走它）并打开 `remoteAccess/follow`。switch 必须把这两个
+白名单端点转发到远端，否则设置表单/locale 会停在 pending，整个客户端树无法启动。
+`settings/describe` 只读且 Host API controller 强制 redact secrets；`settings` 写操作
+仍被拒绝。Desktop 主进程使用本地 owner API Peer 发这个启动读取，switch 只对
+`settings/describe` 放行 owner API Peer；其他端点和所有流仍只接受 browserPeer。
+
 ## 4. 连接生命周期
 
 ```text
-local ──connect──► remote ──disconnect──► remote-offline ──reconnect──► remote
-  ▲                    │                         │
-  └──── useLocal ◄─────┴─────────────────────────┘
+local ──connect──► remote ──disconnect──► local
+  ▲                    │                      │
+  └──── useLocal ◄─────┘                      │
+remote ──unexpected bridge loss──► remote-offline ──reconnect/useLocal──► local
 ```
 
-- `local`：switch 未安装；官方 `/api` 走本机。
+- `local`：switch 未安装；官方 `/api` 走本机。**客户端/Host 进程重启后也停在这里**。
 - `remote`：switch 已安装；BridgeClient 已认证；所有浏览器调用走远端。
 - `remote-offline`：switch 仍安装，BridgeClient 为空；所有调用失败并返回
-  `remote/offline`。这是防止“远端断了就悄悄在本机执行”的关键状态。
-- 客户端重启后，如果磁盘上有 URL/标签，控制器直接恢复为 `remote-offline`，不会自动
-  拿旧令牌重连；用户必须重新输入令牌（令牌只在内存）或显式切回本机。
+  `remote/offline`。它只用于**已加载页面上的意外断线**，防止悄悄在本机执行；不是重启后的
+  持久状态。
+- 客户端/Host 进程重启后保持 `local`：`client.json` 只预填设置页的 URL/标签，用户必须
+  重新输入令牌并显式连接。页面重载沿用当前 Host 进程内存里的 switch 状态（remote active
+  仍是 remote，local 仍是 local）；启动时不安装 switch，避免官方客户端的
+  `$events`/settings 启动请求失败、整个客户端插件树 pending，应用无法打开设置页来恢复。
+- `disconnect`：断开 BridgeClient、卸载 switch、回到 `local`，保留 `client.json` 的
+  URL/标签用于下次预填；不删除配对。
 - `useLocal`：断开 BridgeClient、卸载 switch、删除 `client.json`、清空内存令牌。
-- `disconnect`：只断开连接，保留 switch 和 URL/标签，进入 `remote-offline`。
+- `reconnect`：只在当前已加载页面里、内存中还有令牌时可用；否则重新输入令牌连接。
 
 ### 4.1 设置保存生命周期
 
@@ -101,7 +114,8 @@ Settings 页 → saveSettings
   → configEditor.edit(private-remote entry, raw => raw + role/bindHost/port/label)
   → profile cordis.patch.yml 追加/更新 private-remote 覆盖行
   → Loader reconcile：旧 controller dispose（await Host server.close）→ 新 controller apply
-  → role 含 Host 则 Host 桥启动；role=client 则停止；client.json 仍按原逻辑恢复 remote-offline
+  → role 含 Host 则 Host 桥启动；role=client 则停止；client.json 只预填 Settings 表单，
+    重启保持 local，不会安装 switch
   → Settings 页轮询 status 确认
 ```
 

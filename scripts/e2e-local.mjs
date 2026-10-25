@@ -311,6 +311,20 @@ async function main() {
   log(`preparing isolated profiles in ${HOST_HOME} and ${CLIENT_HOME}`);
   await initProfile(HOST_HOME, 'host');
   await initProfile(CLIENT_HOME, 'client');
+  // Start the isolated client from the bundle default (role=client), even if a
+  // previous failed settings test left a profile override behind.
+  await fs.writeFile(path.join(CLIENT_HOME, 'profiles', 'web', 'cordis.patch.yml'), '[]\n', { mode: 0o600 });
+  // Seed a persisted pairing without a token. A Host restart must stay local
+  // and prefill the Settings form; installing the Gateway switch at boot would
+  // fail the official client's $events/settings boot and leave every client
+  // plugin pending.
+  const seededConfigDir = path.join(CLIENT_HOME, 'private-remote');
+  await fs.mkdir(seededConfigDir, { recursive: true, mode: 0o700 });
+  await fs.writeFile(
+    path.join(seededConfigDir, 'client.json'),
+    `${JSON.stringify({ url: `http://127.0.0.1:${REMOTE_PORT}`, label: 'E2E persisted' }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 
   let host;
   let client;

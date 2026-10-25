@@ -78,6 +78,7 @@ directoryPicker/list            unary
 directoryPicker/pick            unary
 fileReferences/list             unary
 permissionPresets/catalog       unary
+remoteAccess/follow             stream
 session/attachment              unary
 session/canOpenWorkspacePath    unary
 session/cancel                  unary
@@ -97,6 +98,7 @@ session/search                  unary
 session/selectModel             unary
 session/updateQueue             unary
 session/workspacePathApplications unary
+settings/describe               unary
 skills/list                     unary
 userQuestions/answer            unary
 userQuestions/attachWait        stream
@@ -113,10 +115,15 @@ workspace/unarchiveSession      unary
 workspace/unpinSession          unary
 ```
 
-明确不提供（示例）：`credentials/*`、`settings/*`、`terminal/*`、
-`workspaceFiles/*`、`fileUploads/*`、`plugins/*`、`pluginManager/*`、
+明确不提供（示例）：`credentials/*`、`settings/update|mutate|replace|prepareDocument`、
+`terminal/*`、`workspaceFiles/*`、`fileUploads/*`、`plugins/*`、`pluginManager/*`、
 `inspector/*`、`account/*`、`llm/*`、`subagents/*`、`jobs/*`、`schedules/*`、
 `goals/*`、任意 `ctx.invoke`/服务反射/通用工具入口。
+
+`settings/describe` 是只读例外：官方 Desktop 的语言 bootstrap 和设置表单在客户端启动
+时就会调用它；Host 的 API settings controller 对每次远程读取都使用
+`settings.describe({ redactSecrets: true })`，因此响应里不含模型 Key 等 secret。
+`remoteAccess/follow` 只返回 owner 自己的 `{ owner: true }` 基线流。两者都不允许写设置。
 
 白名单中的工作区写操作（create/delete/rename/archive/pin 等）是官方侧栏的显式用户
 动作；`directoryPicker/list`/`pick` 是官方“添加工作区”选择器在 Host 上浏览目录所需，
@@ -144,7 +151,8 @@ connection.createPeer({ principal: { kind: 'owner' }, interactions: 'answer' })
 
 - 连接只存在于这个独立的 BridgeServer 会话中，断开即 dispose Peer；
 - 只能调用白名单端点；
-- 模型凭据、插件管理、终端、任意文件读写等都没有暴露；
+- 模型凭据、插件管理、终端、任意文件读写等都没有暴露；`settings/describe` 只读且强制
+  redaction，`settings` 写操作仍被拒绝；
 - 令牌可轮换、可删除、可断开所有客户端；
 - 最多 4 个并发客户端。
 
@@ -175,8 +183,11 @@ connection.createPeer({ principal: { kind: 'owner' }, interactions: 'answer' })
 | Host 身份 | `$DSH_HOME/private-remote/host-meta.json`（0600） | `hostId`，不含令牌。 |
 | 浏览器存储 | 不使用 | 客户端 `client.js` 不含 `localStorage`/`sessionStorage` 访问。 |
 
-客户端重启后恢复为 `remote-offline`，必须重新输入令牌；没有把令牌和密文放在一起冒充
-安全存储。Host 的模型 API Key 由官方 LLM 插件管理，插件不读取、不复制到客户端。
+客户端/Host 进程重启后保持本地模式；`client.json` 只用于预填设置页的 URL/标签，必须重新
+输入令牌并显式连接。页面重载沿用 Host 进程内存里的 switch 状态，remote active 仍是 remote
+（启动读取已放行），local 仍是 local。`remote-offline` 只用于已加载页面上的意外断线，
+不是重启后的持久状态；没有把令牌和密文放在一起冒充安全存储。Host 的模型 API Key 由官方
+LLM 插件管理，插件不读取、不复制到客户端。
 
 ## 7. 日志与错误
 
@@ -212,6 +223,9 @@ connection.createPeer({ principal: { kind: 'owner' }, interactions: 'answer' })
 - 设置保存/重置只编辑本插件的 `private-remote` profile 行：控制器自己查找 entry，
   浏览器不能提交任意 entry id 或任意插件配置；写入走官方 `configEditor.edit()`，远端
   active 时拒绝。
+- 远端 active 时，switch 只接受 `connection.browserPeer`；唯一例外是 Desktop 主进程的
+  本地 owner API Peer 对 `settings/describe` 的启动读取（官方语言 bootstrap/设置表单），
+  且该端点只读、Host 端强制 redact secrets。其他端点与所有流仍拒绝非 browserPeer。
 - 设置保存先校验 role/port/bindHost，并对监听地址/端口做本机预检；失败不会写 profile。
 - 只接受 POST + `application/json`，body ≤ 1 MiB；动作名在白名单内；方法与路径必须
   一致；响应 `no-store`。
